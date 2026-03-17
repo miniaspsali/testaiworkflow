@@ -1,0 +1,18 @@
+name: Discord Issue Comment Notify
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send comment to Discord
+        run: |
+          curl -H "Content-Type: application/json" \
+          -d '{
+            "content": "New comment on issue #${{ github.event.issue.number }}\n${{ github.event.comment.body }}"
+          }' \
+          ${{ secrets.DISCORD_WEBHOOK }}
