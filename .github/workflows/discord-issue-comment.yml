@@ -11,7 +11,6 @@ jobs:
     steps:
       - name: Send message
         run: |
-          curl -v -X POST \
+          curl -X POST "${{ secrets.DISCORD_WEBHOOK }}" \
           -H "Content-Type: application/json" \
-          -d '{"content":"debug message from github"}' \
-          ${{ secrets.DISCORD_WEBHOOK }}}
+          -d '{"content":"New issue comment detected"}'
