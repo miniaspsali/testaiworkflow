@@ -9,38 +9,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send issue comment to Discord
+      - name: Send message
         run: |
-          ISSUE_TITLE="${{ github.event.issue.title }}"
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
-          COMMENT_BODY="${{ github.event.comment.body }}"
-          COMMENT_URL="${{ github.event.comment.html_url }}"
-          USER_NAME="${{ github.event.comment.user.login }}"
-          REPO_NAME="${{ github.repository }}"
-
-          curl -X POST ${{ secrets.DISCORD_WEBHOOK }} \
+          curl -v -X POST \
           -H "Content-Type: application/json" \
-          -d "{
-            \"username\": \"GitHub Issue Bot\",
-            \"embeds\": [{
-              \"title\": \"💬 New Issue Comment\",
-              \"description\": \"**Repo:** $REPO_NAME\",
-              \"color\": 5814783,
-              \"fields\": [
-                {
-                  \"name\": \"Issue\",
-                  \"value\": \"#$ISSUE_NUMBER - $ISSUE_TITLE\"
-                },
-                {
-                  \"name\": \"User\",
-                  \"value\": \"$USER_NAME\",
-                  \"inline\": true
-                },
-                {
-                  \"name\": \"Comment\",
-                  \"value\": \"$COMMENT_BODY\"
-                }
-              ],
-              \"url\": \"$COMMENT_URL\"
-            }]
-          }"
+          -d '{"content":"debug message from github"}' \
+          ${{ secrets.DISCORD_WEBHOOK }}}
