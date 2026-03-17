@@ -11,8 +11,18 @@ jobs:
     steps:
       - name: Send message
         run: |
+          MESSAGE="💬 New Issue Comment
+
+Repo: ${{ github.repository }}
+
+Issue #${{ github.event.issue.number }} - ${{ github.event.issue.title }}
+User: ${{ github.event.comment.user.login }}
+
+Comment:
+${{ github.event.comment.body }}
+
+🔗 ${{ github.event.comment.html_url }}"
+
           curl -X POST "${{ secrets.DISCORD_WEBHOOK }}" \
           -H "Content-Type: application/json" \
-          -d '{
-            "content": "💬 **New Issue Comment**\n\nRepo: ${{ github.repository }}\n\nIssue #${{ github.event.issue.number }} - ${{ github.event.issue.title }}\nUser: ${{ github.event.comment.user.login }}\n\nComment:\n${{ github.event.comment.body }}\n\n🔗 ${{ github.event.comment.html_url }}"
-          }'
+          -d "{\"content\":\"$MESSAGE\"}"
