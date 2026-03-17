@@ -9,8 +9,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send message to Discord
+      - name: Build Discord message
+        id: build_message
         run: |
+          MESSAGE=$(cat <<EOF
+💬 **New Issue Comment**
+
+Repo: ${{ github.repository }}
+
+Issue #${{ github.event.issue.number }} - ${{ github.event.issue.title }}
+User: ${{ github.event.comment.user.login }}
+
+Comment:
+${{ github.event.comment.body }}
+
+🔗 ${{ github.event.comment.html_url }}
+EOF
+)
+
+          echo "$MESSAGE" > message.txt
+
+      - name: Send to Discord
+        run: |
+          jq -Rs '{content: .}' message.txt > payload.json
+
           curl -X POST "${{ secrets.DISCORD_WEBHOOK }}" \
           -H "Content-Type: application/json" \
-          -d "{\"content\":\"💬 New Issue Comment\n\nRepo: ${{ github.repository }}\n\nIssue #${{ github.event.issue.number }} - ${{ github.event.issue.title }}\nUser: ${{ github.event.comment.user.login }}\n\nComment:\n${{ github.event.comment.body }}\n\n🔗 ${{ github.event.comment.html_url }}\"}"
+          -d @payload.json
