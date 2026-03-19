@@ -82,7 +82,30 @@
 
 ### Comment by @miniaspsali at 2026-03-19 22:39:29.000 UTC
 
-⚙️ 正在執行中...
+讓我按照 CO-STAR 框架和自訂指令來理解這個任務：
+
+[C | Context]
+- 這是一個 GitHub Issue 名叫「記帳小龍蝦」
+- 運作環境：任務存在於 GitHub Issue 中，且與 Telegram 整合
+- 最新的訊息來自 Telegram
+- 數據存放位置：`workspaces/issue-4/` 資料夾內的檔案
+
+[O | Objective]
+根據 CO-STAR 框架的解析邏輯：
+1. 搜尋最新指令：從 issue.md 中尋找「最新一則」含有 `telegram-meta` 的 comment
+2. 最新的 telegram-meta comment 時間戳是「2026-03-19T22:39:24.000Z」
+3. 核心訊息（`---` 分隔線後）：「3/20 晚餐 1000」
+
+這是一個記帳應用，用戶通過 Telegram 提交消費記錄。當前指令是記錄「3/20 晚餐 1000」（可能是 NT$1000）。
+
+我需要：
+1. 先檢查工作目錄的檔案結構
+2. 理解應用如何存儲這些記錄
+3. 將這筆新的消費記錄（3/20 晚餐 1000）添加到系統中
+4. 可能還有之前的記錄（3/19 晚餐 800）需要整理
+
+讓我先查看工作目錄的文件。
+
 
 <!-- githubclaw-brain-result: {"source":"githubclaw-worker-brain"} -->
 
