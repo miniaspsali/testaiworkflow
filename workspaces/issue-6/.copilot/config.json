@@ -1,5 +1,5 @@
 {
   "experimental": true,
-  "model": "gpt-5-mini",
+  "model": "gemini-3-pro-preview",
   "reasoning_effort": "xhigh"
 }
