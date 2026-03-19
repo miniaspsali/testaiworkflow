@@ -1,0 +1,109 @@
+name: 每日知識整理
+
+on:
+  schedule:
+    - cron: "0 20 * * *" # 每日 UTC 20:00（台灣 04:00）
+  workflow_dispatch:
+    inputs:
+      issue_state:
+        description: "Issue state window for compaction"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - open
+          - closed
+      issue_limit:
+        description: "Maximum number of issues to compact"
+        required: false
+        default: "100"
+        type: string
+      since_days:
+        description: "Only consider issues updated within this many days"
+        required: false
+        default: "30"
+        type: string
+
+run-name: >-
+  🧠 Compact Memory (${{ github.event_name == 'workflow_dispatch' && 'manual' || 'scheduled' }})
+
+concurrency:
+  group: compact-memory-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: read
+
+env:
+  ISSUE_STATE: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_state || 'all' }}
+  ISSUE_LIMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_limit || '100' }}
+  SINCE_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.since_days || '30' }}
+  # 預設沿用 GitHub.com 的 github-actions[bot]；複製 workflow 到其他 repo / org 時，
+  # 可用 repo / org variable 覆寫成組織慣用的自動化服務帳號。
+  AUTOMATION_GIT_USER_NAME: ${{ vars['AUTOMATION_GIT_USER_NAME'] || 'github-actions[bot]' }}
+  AUTOMATION_GIT_USER_EMAIL: ${{ vars['AUTOMATION_GIT_USER_EMAIL'] || '41898282+github-actions[bot]@users.noreply.github.com' }}
+
+jobs:
+  compact-memory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.GH_ISSUES_TOKEN || github.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Generate issue agent and daily memory
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_ISSUES_TOKEN || github.token }}
+          CLAWBRAIN_PROVIDER: ${{ vars.CLAWBRAIN_PROVIDER }}
+          CLAWBRAIN_MODEL: ${{ vars.CLAWBRAIN_MODEL }}
+          CLAWBRAIN_API_KEY: ${{ secrets.CLAWBRAIN_API_KEY }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/memory/compact-memory.mjs \
+            --repo "${GITHUB_REPOSITORY}" \
+            --issue-state "${ISSUE_STATE}" \
+            --issue-limit "${ISSUE_LIMIT}" \
+            --since-days "${SINCE_DAYS}" \
+            --language '繁體中文（zh-TW）'
+
+      - name: Generate AI memory context
+        env:
+          CLAWBRAIN_PROVIDER: ${{ vars.CLAWBRAIN_PROVIDER }}
+          CLAWBRAIN_MODEL: ${{ vars.CLAWBRAIN_MODEL }}
+          CLAWBRAIN_API_KEY: ${{ secrets.CLAWBRAIN_API_KEY }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/memory/summarize-memory-context.mjs \
+            --memory-dir .memory \
+            --output .memory/MEMORY.md \
+            --daily-limit 7 \
+            --language '繁體中文（zh-TW）'
+
+      - name: Commit compacted memory
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- .memory; then
+            echo "No memory changes to commit."
+            exit 0
+          fi
+
+          git config user.name "${AUTOMATION_GIT_USER_NAME}"
+          git config user.email "${AUTOMATION_GIT_USER_EMAIL}"
+          git add .memory
+          git commit -m "chore: compact memory"
+          git push origin "HEAD:${BRANCH_NAME}"

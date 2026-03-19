@@ -1,0 +1,377 @@
+name: 自動更新核心引擎
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 每日 UTC 00:00（台灣 08:00）
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '強制執行更新（忽略版本比對）'
+        type: boolean
+        default: false
+
+run-name: "🦞 完整同步: ${{ github.repository }}"
+
+concurrency:
+  group: auto-update-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  BOOTSTRAP_URL: https://claw-bootstrap.kgerickg.workers.dev
+  CF_API: https://api.cloudflare.com/client/v4
+  GITHUB_CLAW_FIXED_CRON: '* * * * *'
+
+jobs:
+  check-version:
+    name: 版本比對
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      should_update: ${{ steps.compare.outputs.should_update }}
+      remote_version: ${{ steps.compare.outputs.remote_version }}
+
+    steps:
+      - name: 比對遠端版號
+        id: compare
+        env:
+          STORED_VERSION: ${{ vars.BOOTSTRAP_VERSION }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+
+          echo "🔍 從 BootstrapWorker 取得目前版號..."
+          RESPONSE="$(curl -sS "$BOOTSTRAP_URL/api/worker-source" || true)"
+
+          if [[ -n "$RESPONSE" ]] && [[ "$(echo "$RESPONSE" | jq -r '.ok // false')" == "true" ]]; then
+            REMOTE_VERSION="$(echo "$RESPONSE" | jq -r '.metadata.version // "unknown"')"
+          else
+            REMOTE_VERSION="unknown"
+          fi
+
+          echo "remote_version=$REMOTE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "🏷️ 遠端版號: $REMOTE_VERSION"
+          echo "📌 已儲存版號: ${STORED_VERSION:-（未設定）}"
+
+          if [[ "${FORCE:-false}" == "true" ]]; then
+            echo "⚡ 強制執行模式，略過版本比對"
+            echo "should_update=true" >> "$GITHUB_OUTPUT"
+          elif [[ -z "${STORED_VERSION:-}" ]]; then
+            echo "📋 尚未設定儲存版號，首次執行完整同步"
+            echo "should_update=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$REMOTE_VERSION" == "unknown" ]]; then
+            echo "⚠️ 無法取得遠端版號，仍執行更新以確保同步"
+            echo "should_update=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$REMOTE_VERSION" == "$STORED_VERSION" ]]; then
+            echo "✅ 版號未異動（$REMOTE_VERSION），略過本次更新"
+            echo "should_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "🚀 偵測到版號異動：$STORED_VERSION → $REMOTE_VERSION"
+            echo "should_update=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 略過摘要
+        if: steps.compare.outputs.should_update == 'false'
+        env:
+          REMOTE_VERSION: ${{ steps.compare.outputs.remote_version }}
+          STORED_VERSION: ${{ vars.BOOTSTRAP_VERSION }}
+        run: |
+          echo "### 🦞 完整同步結果" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**版號未異動，略過本次更新。**" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 項目 | 值 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-----|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Repository | \`${GITHUB_REPOSITORY}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 目前版號 | \`${REMOTE_VERSION:-unknown}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 已儲存版號 | \`${STORED_VERSION:-未設定}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+  full-sync:
+    name: 完整同步
+    needs: check-version
+    if: needs.check-version.outputs.should_update == 'true'
+    runs-on: ubuntu-latest
+    permissions: {}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER_NAME: ${{ vars.WORKER_NAME }}
+      GH_ISSUES_TOKEN: ${{ secrets.GH_ISSUES_TOKEN }}
+      GH_WEBHOOK_SECRET: ${{ secrets.GH_WEBHOOK_SECRET }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+      CLAWBRAIN_API_KEY: ${{ secrets.CLAWBRAIN_API_KEY }}
+      FELO_API_KEY: ${{ secrets.FELO_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - name: Validate required configuration
+        run: |
+          set -euo pipefail
+
+          required_vars=(WORKER_NAME)
+          for name in "${required_vars[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::缺少 Repository variable: $name"
+              exit 1
+            fi
+          done
+
+          required_secrets=(
+            CLOUDFLARE_API_TOKEN
+            CLOUDFLARE_ACCOUNT_ID
+            GH_ISSUES_TOKEN
+            GH_WEBHOOK_SECRET
+            TELEGRAM_BOT_TOKEN
+            TELEGRAM_WEBHOOK_SECRET
+          )
+          for name in "${required_secrets[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::缺少 Repository secret: $name"
+              exit 1
+            fi
+          done
+
+          echo "🦞 準備完整同步 repo: $GITHUB_REPOSITORY"
+          echo "🪝 Worker: $WORKER_NAME"
+
+      - name: Fetch existing worker settings
+        run: |
+          set -euo pipefail
+
+          echo "🔍 從 Cloudflare API 取得現有 Worker 設定..."
+          SETTINGS="$(curl -sS \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "$CF_API/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME/settings")"
+
+          SUCCESS="$(echo "$SETTINGS" | jq -r '.success')"
+          if [[ "$SUCCESS" != "true" ]]; then
+            echo "::error::無法從 Cloudflare 取得現有 Worker 設定: $(echo "$SETTINGS" | jq -c '.errors // []')"
+            exit 1
+          fi
+
+          VARS="$(echo "$SETTINGS" | jq '[.result.bindings[]? | select(.type == "plain_text") | {key: .name, value: .text}] | from_entries')"
+          echo "$VARS" > /tmp/current-worker-vars.json
+          echo "✅ 已擷取目前 Worker 環境變數：$(echo "$VARS" | jq 'length') 項"
+
+      - name: Build bootstrap payload
+        id: payload
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REPOSITORY" != */* ]]; then
+            echo "::error::無法解析 GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
+            exit 1
+          fi
+
+          REPO_OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          WORKER_PREFIX="${WORKER_NAME%-claw}"
+          if [[ -z "$WORKER_PREFIX" || "$WORKER_PREFIX" == "$WORKER_NAME" ]]; then
+            echo "::error::WORKER_NAME 必須可還原成 worker prefix（預期以 -claw 結尾）"
+            exit 1
+          fi
+
+          VARS="$(cat /tmp/current-worker-vars.json)"
+          TELEGRAM_CHAT_ID="$(echo "$VARS" | jq -r '.TELEGRAM_CHAT_ID // ""')"
+          CLAWBRAIN_PROVIDER="$(echo "$VARS" | jq -r '.CLAWBRAIN_PROVIDER // ""')"
+          CLAWBRAIN_MODEL="$(echo "$VARS" | jq -r '.CLAWBRAIN_MODEL // ""')"
+          SCHEDULE_TIME_UNDERSTANDING_MODEL="$(echo "$VARS" | jq -r '.SCHEDULE_TIME_UNDERSTANDING_MODEL // ""')"
+          PROFILE_NAME="$(echo "$VARS" | jq -r '.PROFILE_NAME // ""')"
+          if [[ -z "$PROFILE_NAME" ]]; then
+            PROFILE_NAME="$REPO_NAME"
+          fi
+
+          jq -n \
+            --arg profileName "$PROFILE_NAME" \
+            --arg githubOwner "$REPO_OWNER" \
+            --arg repoName "$REPO_NAME" \
+            --arg githubToken "$GH_ISSUES_TOKEN" \
+            --arg githubWebhookSecret "$GH_WEBHOOK_SECRET" \
+            --arg workerPrefix "$WORKER_PREFIX" \
+            --arg cfAccountId "$CLOUDFLARE_ACCOUNT_ID" \
+            --arg cfApiToken "$CLOUDFLARE_API_TOKEN" \
+            --arg telegramToken "$TELEGRAM_BOT_TOKEN" \
+            --arg telegramChatId "$TELEGRAM_CHAT_ID" \
+            --arg telegramWebhookSecret "$TELEGRAM_WEBHOOK_SECRET" \
+            --arg geminiApiKey "$GEMINI_API_KEY" \
+            --arg clawBrainProvider "$CLAWBRAIN_PROVIDER" \
+            --arg clawBrainModel "$CLAWBRAIN_MODEL" \
+            --arg clawBrainApiKey "$CLAWBRAIN_API_KEY" \
+            --arg scheduleTimeUnderstandingModel "$SCHEDULE_TIME_UNDERSTANDING_MODEL" \
+            --arg feloApiKey "$FELO_API_KEY" \
+            '[
+              {
+                profile: {
+                  name: $profileName,
+                  personality: ""
+                },
+                github: {
+                  id: $githubOwner,
+                  repoName: $repoName,
+                  pat: $githubToken,
+                  autoCreateRepo: false,
+                  webhookSecret: $githubWebhookSecret
+                },
+                cloudflare: {
+                  name: $workerPrefix,
+                  accountId: $cfAccountId,
+                  apiKey: $cfApiToken
+                },
+                telegram: {
+                  token: $telegramToken,
+                  chatId: $telegramChatId,
+                  webhookSecret: $telegramWebhookSecret
+                },
+                aiProvider: (
+                  if $geminiApiKey == "" then
+                    null
+                  else
+                    {
+                      provider: "gemini",
+                      endpoint: "",
+                      modelName: "",
+                      apiKey: $geminiApiKey
+                    }
+                  end
+                ),
+                aiAgent: null,
+                feloApiKey: (if $feloApiKey == "" then null else $feloApiKey end),
+                scheduleTimeUnderstanding: {
+                  model: $scheduleTimeUnderstandingModel
+                },
+                clawBrain: (
+                  if $clawBrainProvider == "" and $clawBrainModel == "" and $clawBrainApiKey == "" then
+                    null
+                  else
+                    {
+                      provider: $clawBrainProvider,
+                      model: $clawBrainModel,
+                      apiKey: $clawBrainApiKey
+                    }
+                  end
+                )
+              }
+            ]' > /tmp/bootstrap-payload.json
+
+          echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
+          echo "worker_prefix=$WORKER_PREFIX" >> "$GITHUB_OUTPUT"
+          echo "📦 送出的 bootstrap payload："
+          cat /tmp/bootstrap-payload.json | jq .
+
+      - name: Run full bootstrap sync
+        id: bootstrap
+        run: |
+          set -euo pipefail
+
+          echo "🚀 呼叫 BootstrapWorker 完整同步..."
+          START_STATUS="$(curl -sS \
+            -o /tmp/bootstrap-response.json \
+            -w "%{http_code}" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            --data @/tmp/bootstrap-payload.json \
+            "$BOOTSTRAP_URL/api/bootstrap/start")"
+
+          echo "http_status=$START_STATUS" >> "$GITHUB_OUTPUT"
+          echo "📨 BootstrapWorker 回應："
+          cat /tmp/bootstrap-response.json | jq .
+
+          if [[ "$START_STATUS" != "200" ]]; then
+            echo "::error::BootstrapWorker start 回傳非 200 狀態碼: $START_STATUS"
+            exit 1
+          fi
+
+          JOB_ID="$(jq -r '.jobId // empty' /tmp/bootstrap-response.json)"
+          if [[ -z "$JOB_ID" ]]; then
+            echo "::error::BootstrapWorker 未回傳 jobId"
+            exit 1
+          fi
+
+          while [[ "$(jq -r '.completed' /tmp/bootstrap-response.json)" != "true" ]]; do
+            NEXT_PHASE="$(jq -r '.nextPhase // empty' /tmp/bootstrap-response.json)"
+            if [[ -z "$NEXT_PHASE" ]]; then
+              echo "::error::Bootstrap job 尚未完成，但缺少 nextPhase"
+              exit 1
+            fi
+
+            echo "⏭️ 繼續執行 phase: $NEXT_PHASE"
+            jq -n --arg jobId "$JOB_ID" '{jobId: $jobId}' > /tmp/bootstrap-continue.json
+
+            CONTINUE_STATUS="$(curl -sS \
+              -o /tmp/bootstrap-response.json \
+              -w "%{http_code}" \
+              -H "Content-Type: application/json" \
+              -X POST \
+              --data @/tmp/bootstrap-continue.json \
+              "$BOOTSTRAP_URL/api/bootstrap/continue")"
+
+            echo "📨 Bootstrap continue 回應："
+            cat /tmp/bootstrap-response.json | jq .
+
+            if [[ "$CONTINUE_STATUS" != "200" ]]; then
+              echo "::error::BootstrapWorker continue 回傳非 200 狀態碼: $CONTINUE_STATUS"
+              exit 1
+            fi
+          done
+
+          READY="$(jq -r '.ready' /tmp/bootstrap-response.json)"
+          RESULT_SUCCESS="$(jq -r '.result.success // false' /tmp/bootstrap-response.json)"
+          if [[ "$READY" != "true" || "$RESULT_SUCCESS" != "true" ]]; then
+            echo "::error::BootstrapWorker 未完成完整同步"
+            exit 1
+          fi
+
+          jq -r '.logs[]?' /tmp/bootstrap-response.json > /tmp/bootstrap-logs.txt
+
+      - name: Ensure fixed cron trigger
+        run: |
+          set -euo pipefail
+
+          npm install --global wrangler@4.74.0
+          wrangler triggers deploy \
+            --name "$WORKER_NAME" \
+            --schedule "$GITHUB_CLAW_FIXED_CRON"
+
+      - name: Update stored version
+        if: success()
+        env:
+          REMOTE_VERSION: ${{ needs.check-version.outputs.remote_version }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$REMOTE_VERSION" == "unknown" ]]; then
+            echo "⚠️ 遠端版號為 unknown，跳過版號儲存"
+            exit 0
+          fi
+
+          echo "📝 更新儲存版號: $REMOTE_VERSION"
+          GH_TOKEN="$GH_ISSUES_TOKEN" gh variable set BOOTSTRAP_VERSION \
+            --body "$REMOTE_VERSION" \
+            --repo "$GITHUB_REPOSITORY"
+          echo "✅ 已更新 BOOTSTRAP_VERSION → $REMOTE_VERSION"
+
+      - name: Summary
+        if: always()
+        env:
+          BOOTSTRAP_HTTP_STATUS: ${{ steps.bootstrap.outputs.http_status }}
+          WORKER_VERSION: ${{ needs.check-version.outputs.remote_version }}
+        run: |
+          echo "### 🦞 完整同步結果" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 項目 | 值 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-----|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Repository | \`${GITHUB_REPOSITORY}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Worker | \`${WORKER_NAME}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 版號 | \`${WORKER_VERSION:-unknown}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Bootstrap API | ${BOOTSTRAP_URL}/api/bootstrap |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| HTTP Status | \`${BOOTSTRAP_HTTP_STATUS:-n/a}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### Bootstrap 日誌" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f /tmp/bootstrap-logs.txt ]]; then
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/bootstrap-logs.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "沒有可用的 bootstrap 日誌。" >> "$GITHUB_STEP_SUMMARY"
+          fi
