@@ -1,0 +1,7 @@
+# Dependencies — installed locally for building only
+node_modules/
+
+# Lockfiles — auto-generated, not needed in version control
+package-lock.json
+bun.lockb
+bun.lock
