@@ -1,0 +1,61 @@
+2026-03-19T22:44:57.771Z [INFO] Workspace initialized: 4126d96a-8d91-4f8c-a8ac-7ee5fd30866d (checkpoints: 0)
+2026-03-19T22:44:57.792Z [INFO] Starting Copilot CLI: 1.0.9
+2026-03-19T22:44:57.792Z [INFO] Node.js version: v24.11.1
+2026-03-19T22:44:58.185Z [ERROR] Starting remote MCP client for github-mcp-server with url: https://api.individual.githubcopilot.com/mcp/readonly
+2026-03-19T22:44:58.185Z [ERROR] Creating MCP client for github-mcp-server...
+2026-03-19T22:44:58.186Z [ERROR] Connecting MCP client for github-mcp-server...
+2026-03-19T22:44:58.331Z [ERROR] MCP client for github-mcp-server connected, took 145ms
+2026-03-19T22:44:58.332Z [ERROR] Started MCP client for remote server github-mcp-server
+2026-03-19T22:44:58.332Z [ERROR] GitHub MCP server configured after authentication
+2026-03-19T22:44:58.379Z [WARNING] Model 'gpt-5.4' from config file is not available. Falling back to default.
+2026-03-19T22:44:58.379Z [INFO] Using default model: claude-haiku-4.5
+2026-03-19T22:44:58.723Z [INFO] Memory enablement check: disabled
+2026-03-19T22:44:58.723Z [INFO] Memory is not enabled; skipping memory tools.
+2026-03-19T22:44:58.978Z [INFO] Memory enablement check: disabled
+2026-03-19T22:44:58.978Z [INFO] Memory is not enabled; skipping memory tools.
+2026-03-19T22:44:58.979Z [INFO]  
+2026-03-19T22:44:58.979Z [INFO] --- Start of group: configured settings: ---
+2026-03-19T22:44:58.980Z [INFO] --- End of group ---
+2026-03-19T22:44:59.204Z [ERROR] Request to GitHub API at https://api.individual.githubcopilot.com/agents/swe/internal/memory/v0/miniaspsali/testaiworkflow/prompt failed with status 404 (request ID: B681:DFE81:411C39:4B0E3F:69BC7C6A), body: Resource not found
+
+2026-03-19T22:44:59.205Z [ERROR] Failed to fetch memory prompt: HTTP 404: Resource not found
+ (url=https://api.individual.githubcopilot.com/agents/swe/internal/memory/v0/miniaspsali/testaiworkflow/prompt, integrationId=copilot-developer-cli)
+2026-03-19T22:44:59.212Z [INFO] --- Start of group: Completion request configuration:  ---
+2026-03-19T22:44:59.213Z [INFO] --- End of group ---
+2026-03-19T22:44:59.772Z [INFO] CompactionProcessor: Utilization 17.5% (22388/128000 tokens) below threshold 80%
+2026-03-19T22:44:59.872Z [INFO] --- Start of group: Sending request to the AI model ---
+2026-03-19T22:44:59.982Z [ERROR] error (Request-ID B681:DFE81:411F3F:4B11D1:69BC7C6B)
+2026-03-19T22:44:59.983Z [ERROR] {
+  "status": 402,
+  "headers": {},
+  "requestID": "00000-22ba73cc-6611-4c5f-b71d-64c5e36dc9da",
+  "error": {
+    "message": "You have no quota",
+    "code": "quota_exceeded"
+  },
+  "code": "quota_exceeded",
+  "request_id": "00000-22ba73cc-6611-4c5f-b71d-64c5e36dc9da",
+  "ghRequestId": "B681:DFE81:411F3F:4B11D1:69BC7C6B",
+  "name": "CAPIError",
+  "message": "402 You have no quota",
+  "stack": "CAPIError: 402 You have no quota\n    at t.fromAPIError (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2007:949)\n    at wst.getCompletionWithTools (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2007:10970)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async mxe.getCompletionWithTools (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2019:2292)\n    at async t.runAgenticLoop (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2473:36636)\n    at async t.processQueuedItems (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2473:5634)\n    at async t.processQueue (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2473:896)\n    at async t.send (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2471:3497)\n    at async y5i (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:5028:2645)\n    at async Ugt (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:4990:494)"
+}
+2026-03-19T22:44:59.985Z [ERROR] Retry after is not set. Giving up.
+2026-03-19T22:44:59.986Z [ERROR] error
+2026-03-19T22:44:59.986Z [ERROR] {
+  "status": 402,
+  "headers": {},
+  "requestID": "00000-22ba73cc-6611-4c5f-b71d-64c5e36dc9da",
+  "error": {
+    "message": "You have no quota",
+    "code": "quota_exceeded"
+  },
+  "code": "quota_exceeded",
+  "request_id": "00000-22ba73cc-6611-4c5f-b71d-64c5e36dc9da",
+  "ghRequestId": "B681:DFE81:411F3F:4B11D1:69BC7C6B",
+  "name": "CAPIError",
+  "message": "402 You have no quota",
+  "stack": "CAPIError: 402 You have no quota\n    at t.fromAPIError (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2007:949)\n    at wst.getCompletionWithTools (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2007:10970)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async mxe.getCompletionWithTools (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2019:2292)\n    at async t.runAgenticLoop (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2473:36636)\n    at async t.processQueuedItems (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2473:5634)\n    at async t.processQueue (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2473:896)\n    at async t.send (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:2471:3497)\n    at async y5i (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:5028:2645)\n    at async Ugt (file:///home/runner/.cache/copilot/pkg/linux-x64/1.0.9/app.js:4990:494)"
+}
+2026-03-19T22:44:59.986Z [INFO] --- End of group ---
+2026-03-19T22:44:59.988Z [ERROR] Payment required error: CAPIError: 402 You have no quota
