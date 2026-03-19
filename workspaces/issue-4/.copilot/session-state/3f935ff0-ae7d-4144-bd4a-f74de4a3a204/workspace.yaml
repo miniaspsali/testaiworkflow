@@ -1,0 +1,32 @@
+id: 3f935ff0-ae7d-4144-bd4a-f74de4a3a204
+cwd: /home/runner/work/testaiworkflow/testaiworkflow/workspaces/issue-4
+git_root: /home/runner/work/testaiworkflow/testaiworkflow
+repository: miniaspsali/testaiworkflow
+host_type: github
+branch: issue-4
+summary_count: 0
+created_at: 2026-03-19T22:40:29.826Z
+updated_at: 2026-03-19T22:40:33.296Z
+summary: |-
+  # 記帳小龍蝦 Description
+
+  **State:** open
+  **Labels:** chat-session
+  **Created by:** @miniaspsali
+  **Created at:** 2026-03-19 14:19:46.000 UTC
+
+  <!-- telegram-meta: {"chat_id":8771070082,"user_id":8771070082,"username":null,"chat_type":"private","ts":"2026-03-19T14:19:46.183Z"} -->
+
+  ```json
+  {
+    "name": "記帳小龍蝦",
+    "description": "整理日常收支"
+  }
+  ```
+
+
+  ---
+
+  ### Comment by @miniaspsali at 2026-03-19 14:21:09.000 UTC
+
+  <!-- telegram-meta: {"chat_id":8771070082,"msg_id":13,"user_id":8771070082,"username":null,"chat_...
