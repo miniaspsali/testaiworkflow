@@ -1,5 +1,6 @@
 {
   "experimental": true,
   "model": "gpt-5-mini",
-  "reasoning_effort": "xhigh"
+  "reasoning_effort": "xhigh",
+  "firstLaunchAt": "2026-03-11T00:00:00.000Z"
 }
