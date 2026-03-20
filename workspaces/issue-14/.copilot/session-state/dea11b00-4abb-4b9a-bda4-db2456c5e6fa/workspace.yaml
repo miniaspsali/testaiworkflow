@@ -1,0 +1,32 @@
+id: dea11b00-4abb-4b9a-bda4-db2456c5e6fa
+cwd: /home/runner/work/testaiworkflow/testaiworkflow/workspaces/issue-14
+git_root: /home/runner/work/testaiworkflow/testaiworkflow
+repository: miniaspsali/testaiworkflow
+host_type: github
+branch: issue-14
+summary_count: 0
+created_at: 2026-03-20T06:00:52.633Z
+updated_at: 2026-03-20T06:00:54.480Z
+summary: |-
+  # 新聞記者 Description
+
+  **State:** open
+  **Labels:** chat-session
+  **Created by:** @miniaspsali
+  **Created at:** 2026-03-20 05:59:17.000 UTC
+
+  <!-- telegram-meta: {"chat_id":8771070082,"user_id":8771070082,"username":null,"chat_type":"private","ts":"2026-03-20T05:59:16.959Z"} -->
+
+  ```json
+  {
+    "name": "新聞記者",
+    "description": "整理今日重點新聞"
+  }
+  ```
+
+
+  ---
+
+  ### Comment by @miniaspsali at 2026-03-20 05:59:55.000 UTC
+
+  <!-- telegram-meta: {"chat_id":8771070082,"msg_id":95,"user_id":8771070082,"username":null,"chat_...
