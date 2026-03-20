@@ -1,0 +1,254 @@
+name: install-line-bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      line_worker_name:
+        description: Worker 名稱
+        required: true
+        type: string
+      issue_number:
+        description: 綁定的 GitHub Issue 編號（可留空，留空會自動建立新 Issue）
+        required: false
+        type: string
+      line_channel_secret:
+        description: LINE_CHANNEL_SECRET
+        required: true
+        type: string
+      line_channel_access_token:
+        description: LINE_CHANNEL_ACCESS_TOKEN
+        required: true
+        type: string
+      line_assistant_utc_offset:
+        description: LINE_ASSISTANT_UTC_OFFSET（預設 +08:00）
+        required: false
+        default: "+08:00"
+        type: string
+
+run-name: "🚀 install-line-bot - ${{ inputs.line_worker_name }}"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: install-line-bot-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  BOOTSTRAP_LINE_WORKER_SOURCE_URL: https://claw-bootstrap.kgerickg.workers.dev/api/worker-source?worker=LineWorker
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 驗證輸入與 secrets
+        id: config
+        shell: bash
+        env:
+          INPUT_LINE_WORKER_NAME: ${{ inputs.line_worker_name }}
+        run: |
+          set -euo pipefail
+
+          line_worker_name="${INPUT_LINE_WORKER_NAME// /}"
+
+          if [[ -z "${line_worker_name}" ]]; then
+            echo "::error::必須提供 line_worker_name"
+            exit 1
+          fi
+
+          if [[ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]]; then
+            echo "::error::缺少 CLOUDFLARE_ACCOUNT_ID secret"
+            exit 1
+          fi
+
+          if [[ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]]; then
+            echo "::error::缺少 CLOUDFLARE_API_TOKEN secret"
+            exit 1
+          fi
+
+          if [[ -z "${{ secrets.GH_ISSUES_TOKEN }}" ]]; then
+            echo "::error::缺少 GH_ISSUES_TOKEN secret"
+            exit 1
+          fi
+
+          if [[ -z "${{ inputs.line_channel_secret }}" ]]; then
+            echo "::error::必須提供 line_channel_secret"
+            exit 1
+          fi
+
+          if [[ -z "${{ inputs.line_channel_access_token }}" ]]; then
+            echo "::error::必須提供 line_channel_access_token"
+            exit 1
+          fi
+
+          utc_offset="${{ inputs.line_assistant_utc_offset }}"
+          if [[ -n "${utc_offset}" ]] && ! [[ "${utc_offset}" =~ ^[+-][0-9]{2}:[0-9]{2}$ ]]; then
+            echo "::error::line_assistant_utc_offset 必須符合 +/-HH:MM"
+            exit 1
+          fi
+
+          echo "::notice::開始安裝 LINE Worker，目標名稱 ${line_worker_name}"
+          echo "line_worker_name=${line_worker_name}" >> "${GITHUB_OUTPUT}"
+
+      - name: 解析目標 Issue
+        id: issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_ISSUES_TOKEN }}
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: |
+          set -euo pipefail
+
+          input_issue="${INPUT_ISSUE_NUMBER// /}"
+
+          if [[ -n "${input_issue}" ]]; then
+            echo "::notice::使用既有 Issue #${input_issue}"
+            if ! [[ "${input_issue}" =~ ^[0-9]+$ ]]; then
+              echo "::error::issue_number 必須是正整數"
+              exit 1
+            fi
+
+            if ! gh issue view "${input_issue}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+              echo "::error::找不到 Issue #${input_issue}"
+              exit 1
+            fi
+
+            echo "target_issue_number=${input_issue}" >> "${GITHUB_OUTPUT}"
+            echo "created_issue=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "正在建立新的 LINE Worker 綁定 Issue..."
+
+          new_issue_url=$(gh issue create \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "[LINE] Worker 綁定" \
+            --body "由 install-line-bot workflow 自動建立於 $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          )
+          new_issue_number="${new_issue_url##*/}"
+
+          if [[ -z "${new_issue_number}" || ! "${new_issue_number}" =~ ^[0-9]+$ ]]; then
+            echo "::error::建立 Issue 失敗"
+            exit 1
+          fi
+
+          echo "::notice::已建立新的綁定 Issue #${new_issue_number}"
+          echo "target_issue_number=${new_issue_number}" >> "${GITHUB_OUTPUT}"
+          echo "created_issue=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 準備 Line Worker 原始碼
+        id: line_worker_source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "::notice::開始下載 Line Worker 原始碼"
+          manifest_path="/tmp/line-worker-source.json"
+          curl -fsS "${BOOTSTRAP_LINE_WORKER_SOURCE_URL}" -o "${manifest_path}"
+
+          if [[ "$(jq -r '.ok // false' "${manifest_path}")" != "true" ]]; then
+            echo "::error::BootstrapWorker 沒有回傳有效的 LineWorker payload"
+            cat "${manifest_path}"
+            exit 1
+          fi
+
+          source_dir=".line-worker-dist"
+          mkdir -p "${source_dir}"
+          module_count="$(jq -r '.modules | length' "${manifest_path}")"
+          echo "::notice::共收到 ${module_count} 個模組，準備寫入 ${source_dir}"
+
+          while IFS= read -r encoded_module; do
+            module_path="$(printf '%s' "${encoded_module}" | base64 --decode | jq -r '.name')"
+            module_content="$(printf '%s' "${encoded_module}" | base64 --decode | jq -r '.content')"
+
+            mkdir -p "${source_dir}/$(dirname "${module_path}")"
+            printf '%s' "${module_content}" > "${source_dir}/${module_path}"
+          done < <(jq -r '.modules[] | @base64' "${manifest_path}")
+
+          echo "config_path=${source_dir}/wrangler.jsonc" >> "${GITHUB_OUTPUT}"
+
+      - name: 部署 Line Worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config ${{ steps.line_worker_source.outputs.config_path }} --name ${{ steps.config.outputs.line_worker_name }}
+
+      - name: 同步 Line Worker secrets
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_NAME: ${{ steps.config.outputs.line_worker_name }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.target_issue_number }}
+          LINE_CHANNEL_SECRET: ${{ inputs.line_channel_secret }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ inputs.line_channel_access_token }}
+          LINE_ASSISTANT_UTC_OFFSET: ${{ inputs.line_assistant_utc_offset }}
+          GH_OWNER: ${{ github.repository_owner }}
+          GH_REPO: ${{ github.event.repository.name }}
+          GH_TOKEN: ${{ secrets.GH_ISSUES_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          echo "::notice::開始同步 Cloudflare Worker secrets"
+          npm install --global wrangler
+
+          declare -a secrets=(
+            "ISSUE_NUMBER:${ISSUE_NUMBER}"
+            "GH_OWNER:${GH_OWNER}"
+            "GH_REPO:${GH_REPO}"
+            "GH_TOKEN:${GH_TOKEN}"
+            "LINE_CHANNEL_SECRET:${LINE_CHANNEL_SECRET}"
+            "LINE_CHANNEL_ACCESS_TOKEN:${LINE_CHANNEL_ACCESS_TOKEN}"
+            "LINE_ASSISTANT_UTC_OFFSET:${LINE_ASSISTANT_UTC_OFFSET}"
+            "LINE_WORKER_NAME:${WORKER_NAME}"
+          )
+
+          for secret_pair in "${secrets[@]}"; do
+            key="${secret_pair%%:*}"
+            value="${secret_pair#*:}"
+            if [[ -z "${value}" ]]; then
+              echo "::error::${key} 缺少值"
+              exit 1
+            fi
+            echo "::notice::正在同步 secret ${key}"
+            echo "${value}" | wrangler secret put "${key}" --name "${WORKER_NAME}"
+          done
+
+          echo "::notice::Cloudflare Worker secrets 同步完成"
+
+      - name: 寫入摘要
+        shell: bash
+        env:
+          WORKER_NAME: ${{ steps.config.outputs.line_worker_name }}
+          WORKERS_SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
+        run: |
+          echo "::notice::開始整理安裝摘要"
+          if [[ -n "${WORKERS_SUBDOMAIN}" ]]; then
+            worker_url="https://${WORKER_NAME}.${WORKERS_SUBDOMAIN}.workers.dev"
+          else
+            worker_url="https://${WORKER_NAME}.workers.dev"
+          fi
+
+          {
+            echo "### ✅ Line Worker 建立摘要"
+            echo ""
+            echo "| 項目 | 值 |"
+            echo "|---|---|"
+            echo "| Worker 名稱 | \`${WORKER_NAME}\` |"
+            echo "| Worker URL | [${worker_url}](${worker_url}) |"
+            echo "| 綁定 Issue | #${{ steps.issue.outputs.target_issue_number }} |"
+            echo "| 是否新建 Issue | ${{ steps.issue.outputs.created_issue }} |"
+            echo "| UTC Offset | ${{ inputs.line_assistant_utc_offset }} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          echo "::notice::安裝摘要已寫入 GITHUB_STEP_SUMMARY"

@@ -30,6 +30,21 @@ description: Use this skill when users ask to generate, edit, or compose images 
   - [Grounding with Google Search](https://ai.google.dev/gemini-api/docs/image-generation#use-with-grounding)
   - [Grounding with Google Image Search](https://ai.google.dev/gemini-api/docs/image-generation#image-search)
 
+## Output formatting rules
+- After successful generation, **always** report results in this format:
+  1. A short completion message (e.g. `✅ 圖片已產出`)
+  2. The **relative path** to each generated file, formatted as a markdown image embed: `![description](relative/path/to/image.jpg)`
+  3. File metadata: format (`JPEG`/`PNG`), dimensions, file size
+- Example final answer:
+  ```
+  ✅ 圖片已產出
+
+  ![一杯抹茶拿鐵](workspaces/issue-2/nanobanana-output/matcha-latte-01.jpg)
+
+  - 格式：JPEG · 1408×768 · 757 KB
+  ```
+- This ensures downstream systems (GitHub Issue comments, Telegram relay) can display or link to the image.
+
 ## Execution pattern
 - Default to Node.js wrapper flows for regular usage, especially when payload control is needed.
 - Quick path:
