@@ -1,6 +1,6 @@
 {
   "version": "0.1.0 (build 188)",
-  "activeId": 11,
+  "activeId": 12,
   "maxMultiAgents": 1,
   "AgentProvider": "CopilotCLI"
 }
