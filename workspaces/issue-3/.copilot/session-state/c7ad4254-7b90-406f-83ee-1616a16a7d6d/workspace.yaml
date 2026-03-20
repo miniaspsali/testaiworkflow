@@ -1,0 +1,33 @@
+id: c7ad4254-7b90-406f-83ee-1616a16a7d6d
+cwd: /home/runner/work/testaiworkflow/testaiworkflow/workspaces/issue-3
+git_root: /home/runner/work/testaiworkflow/testaiworkflow
+repository: miniaspsali/testaiworkflow
+host_type: github
+branch: issue-3
+summary_count: 0
+created_at: 2026-03-20T03:31:50.739Z
+updated_at: 2026-03-20T03:31:52.534Z
+summary: |-
+  # test claw Description
+
+  **State:** open
+  **Labels:** None
+  **Created by:** @miniaspsali
+  **Created at:** 2026-03-19 14:12:07.000 UTC
+
+  <!-- telegram-meta: {"chat_id":8771070082,"msg_id":null,"ts":"2026-03-19T14:12:06.375Z","bootstrap":true} -->
+
+  歡迎使用 GitHubClaw 🦞
+
+  這隻是你目前的第一隻小龍蝦。
+  想開新話題？輸入 `/new` 就行了！
+
+  ```json
+  {
+    "name": "test claw",
+    "description": "擔任專案前線任務中樞，接收 Telegram 需求後立即轉為可追蹤工作項目，確保每個需求都能被接力與執行。",
+    "skills": [
+      "agent-browser",
+      "audio-transcriber",
+      "call-agent-via-issue",
+      "...
