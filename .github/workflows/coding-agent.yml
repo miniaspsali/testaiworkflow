@@ -365,11 +365,15 @@ jobs:
           set -e
 
           # 從 copilot JSON 日誌裡抽出最後一段文字內容，當成要回貼到 issue 的結果。
-          # 優先：若含有 session.error，抽出其 data.message；否則抽出最後一筆 assistant.reasoning 的 content。
+          # 優先順序：
+          #   1. session.error → 抽出 data.message（代表 CLI 層級錯誤）
+          #   2. 最後一筆「無 toolRequests」的 assistant.message → 抽出 data.content（AI 最終回覆）
+          #   3. 最後一筆 assistant.message 的 data.content（含 tool call 的中間訊息，作為 fallback）
           if [[ -f "${LOG_FILE}" ]]; then
             jq -s -r '
               (map(select(.type == "session.error")) | last | .data.message // empty)
-              // (map(select(.type == "assistant.reasoning")) | last | .data.content // empty)
+              // (map(select(.type == "assistant.message" and ((.data.toolRequests // []) | length == 0) and (.data.content // "" | length > 0))) | last | .data.content // empty)
+              // (map(select(.type == "assistant.message" and (.data.content // "" | length > 0))) | last | .data.content // empty)
               // ""
             ' "${LOG_FILE}" > "${RESULT_FILE}"
           else
