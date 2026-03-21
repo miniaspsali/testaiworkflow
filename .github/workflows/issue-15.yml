@@ -297,10 +297,12 @@ jobs:
         env:
           GH_TOKEN: ${{ env.COPILOT_GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ env.COPILOT_GITHUB_TOKEN }}
+          COPILOT_HOME: ".copilot"
           COPILOT_GITHUB_TOKEN: ${{ env.COPILOT_GITHUB_TOKEN }}
           ISSUE_DIR: ${{ steps.workspace.outputs.issue_dir }}
           RESULT_FILE: ${{ steps.workspace.outputs.result_file }}
           LOG_FILE: ${{ steps.workspace.outputs.log_file }}
+          AGENT_BROWSER_STATE: "auth.json"
         run: |
           set -euo pipefail
 
@@ -321,9 +323,138 @@ jobs:
           set +e
           (
             cd "${ISSUE_DIR}"
+            # 若目前工作目錄有 .env，就在不執行檔案內容的前提下把變數載入這個子殼層。
+            if [[ -f .env ]]; then
+              echo "::notice::Loading environment variables from ${ISSUE_DIR}/.env for Copilot CLI"
+              while IFS= read -r -d '' _env_key && IFS= read -r -d '' _env_value; do
+                export "${_env_key}=${_env_value}"
+              done < <(python3 - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          path = Path(".env")
+          valid_key = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+          def strip_inline_comment(raw_value: str) -> str:
+              in_single = False
+              in_double = False
+              escaped = False
+
+              for index, char in enumerate(raw_value):
+                  if escaped:
+                      escaped = False
+                      continue
+
+                  if char == "\\" and in_double:
+                      escaped = True
+                      continue
+
+                  if char == "'" and not in_double:
+                      in_single = not in_single
+                      continue
+
+                  if char == '"' and not in_single:
+                      in_double = not in_double
+                      continue
+
+                  if char == "#" and not in_single and not in_double:
+                      if index == 0 or raw_value[index - 1].isspace():
+                          return raw_value[:index].rstrip()
+
+              return raw_value.rstrip()
+
+          def parse_value(raw_value: str) -> str:
+              value = strip_inline_comment(raw_value).strip()
+              if not value:
+                  return ""
+
+              if value[0] == "'":
+                  closing_index = value.find("'", 1)
+                  if closing_index == -1:
+                      raise ValueError("Unterminated single-quoted value")
+                  trailing = value[closing_index + 1:].strip()
+                  if trailing and not trailing.startswith("#"):
+                      raise ValueError("Unexpected characters after single-quoted value")
+                  return value[1:closing_index]
+
+              if value[0] == '"':
+                  parsed = []
+                  escaped = False
+
+                  for index, char in enumerate(value[1:], start=1):
+                      if escaped:
+                          parsed.append({
+                              "n": "\n",
+                              "r": "\r",
+                              "t": "\t",
+                              '"': '"',
+                              "\\": "\\",
+                              "$": "$",
+                          }.get(char, "\\" + char))
+                          escaped = False
+                          continue
+
+                      if char == "\\":
+                          escaped = True
+                          continue
+
+                      if char == '"':
+                          trailing = value[index + 1:].strip()
+                          if trailing and not trailing.startswith("#"):
+                              raise ValueError("Unexpected characters after double-quoted value")
+                          return "".join(parsed)
+
+                      parsed.append(char)
+
+                  raise ValueError("Unterminated double-quoted value")
+
+              return value
+
+          for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+              line = raw_line.strip()
+              if not line or line.startswith("#"):
+                  continue
+
+              if line.startswith("export "):
+                  line = line[7:].lstrip()
+
+              if "=" not in line:
+                  print(
+                      f"::warning file=.env,line={line_number}::Skipping invalid dotenv line without '='",
+                      file=sys.stderr,
+                  )
+                  continue
+
+              key, raw_value = line.split("=", 1)
+              key = key.strip()
+              if not valid_key.match(key):
+                  print(
+                      f"::warning file=.env,line={line_number}::Skipping invalid environment variable name '{key}'",
+                      file=sys.stderr,
+                  )
+                  continue
+
+              try:
+                  value = parse_value(raw_value)
+              except ValueError as exc:
+                  print(
+                      f"::warning file=.env,line={line_number}::{exc}; skipping line",
+                      file=sys.stderr,
+                  )
+                  continue
+
+              sys.stdout.write(key)
+              sys.stdout.write("\0")
+              sys.stdout.write(value)
+              sys.stdout.write("\0")
+          PY
+              )
+              unset _env_key _env_value
+            fi
             prompt="$(cat issue.md)"
             # 以 workflow 既有旗標呼叫 copilot CLI，並把 JSON 輸出同步寫進 log 檔。
-            copilot -p "${prompt}" --yolo --no-auto-update --config-dir .copilot --add-dir ../../.github/scripts --add-dir ../../.github/hooks --add-dir ../../.memory --add-dir ../../.agents --output-format json --stream off \
+            copilot -p "${prompt}" --yolo --output-format json --stream off \
               | tee "$(basename "${LOG_FILE}")" \
               | jq
           )
@@ -387,13 +518,30 @@ jobs:
 
           # 遠端 branch 已存在時用 force-with-lease 更新；否則建立新的上游分支。
           git commit -m "chore: record coding agent output for issue #${ISSUE_NUMBER}"
-          git pull --rebase origin "${BRANCH_NAME}" || {
-            echo "::warning::Failed to rebase before pushing; attempting to push without rebase."
-          }
-          if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH_NAME}"; then
-            git push --force-with-lease origin "HEAD:${BRANCH_NAME}"
-          else
-            git push --set-upstream origin "HEAD:${BRANCH_NAME}"
+
+          push_succeeded=false
+          for attempt in 1 2 3; do
+            git fetch origin "${BRANCH_NAME}" || true
+            git rebase "origin/${BRANCH_NAME}" || { git rebase --abort || true; }
+
+            if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH_NAME}"; then
+              if git push --force-with-lease origin "HEAD:${BRANCH_NAME}"; then
+                push_succeeded=true
+                break
+              fi
+            else
+              if git push --set-upstream origin "HEAD:${BRANCH_NAME}"; then
+                push_succeeded=true
+                break
+              fi
+            fi
+            echo "::warning::Push attempt ${attempt}/3 failed; retrying in $((attempt * 3))s..."
+            sleep $((attempt * 3))
+          done
+
+          if [ "$push_succeeded" != "true" ]; then
+            echo "::error::Failed to push after 3 attempts."
+            exit 1
           fi
 
       # 成功時，把最終結果直接貼回進度留言，讓 issue 頁面就是最終輸出入口。
