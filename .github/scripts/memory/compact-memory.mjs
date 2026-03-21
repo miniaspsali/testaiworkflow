@@ -218,6 +218,21 @@ function truncateText(value, maxLength) {
   return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
+function decodeBase64Utf8(value) {
+  return Buffer.from(String(value || '').replace(/\s+/g, ''), 'base64')
+    .toString('utf8');
+}
+
+function isMissingGitHubContentError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message === 'Not Found' ||
+    message.includes('No commit found for the ref') ||
+    message.includes('Reference does not exist') ||
+    message.includes('status 404')
+  );
+}
+
 function normalizeLabel(label) {
   if (typeof label === 'string') {
     return label.trim();
@@ -464,6 +479,52 @@ function truncatePromptBlock(content, maxChars) {
     text: `${normalized.slice(0, maxChars).trimEnd()}\n\n[truncated]`,
     truncated: true,
   };
+}
+
+function parseArchivedIssueCommentTimestamp(rawValue) {
+  const normalized = String(rawValue || '').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  const parsed = new Date(`${normalized} UTC`);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  return formatTimestamp(parsed);
+}
+
+export function parseArchivedIssueComments(markdown, fallbackIssueUrl = '') {
+  const normalized = String(markdown || '').replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const headingPattern =
+    /^### Comment by @(.+?) at (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC\s*$/gm;
+  const matches = Array.from(normalized.matchAll(headingPattern));
+
+  return matches.map((match, index) => {
+    const nextMatch = matches[index + 1];
+    const bodyStart = (match.index || 0) + match[0].length;
+    const bodyEnd = nextMatch?.index ?? normalized.length;
+    const rawBody = normalized.slice(bodyStart, bodyEnd);
+    const body = rawBody
+      .replace(/^\s+/, '')
+      .replace(/\n*\n---\s*$/, '')
+      .trim();
+    const createdAt = parseArchivedIssueCommentTimestamp(match[2]);
+
+    return {
+      id: `archived-${index + 1}`,
+      author: String(match[1] || '').trim(),
+      createdAt,
+      updatedAt: createdAt,
+      url: fallbackIssueUrl,
+      body,
+    };
+  });
 }
 
 function selectDailyAgentPromptSources(agentMemories, summaryProfile) {
@@ -889,15 +950,37 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-function buildIssueThread(repoMetadata, issue, comments) {
-  const normalizedComments = comments.map((comment) => ({
-    id: comment.id,
-    author: normalizeLogin(comment.user),
-    createdAt: formatTimestamp(comment.created_at),
-    updatedAt: formatTimestamp(comment.updated_at),
-    url: comment.html_url,
-    body: normalizeWhitespace(comment.body || ''),
-  }));
+export function buildIssueThread(
+  repoMetadata,
+  issue,
+  comments,
+  options = {},
+) {
+  const archivedComments = Array.isArray(options.archivedSnapshot?.comments)
+    ? options.archivedSnapshot.comments
+    : [];
+  const sourceComments = comments.length > 0 ? comments : archivedComments;
+  const normalizedComments = sourceComments.map((comment) => {
+    if (comment && typeof comment.created_at === 'string') {
+      return {
+        id: comment.id,
+        author: normalizeLogin(comment.user),
+        createdAt: formatTimestamp(comment.created_at),
+        updatedAt: formatTimestamp(comment.updated_at),
+        url: comment.html_url,
+        body: normalizeWhitespace(comment.body || ''),
+      };
+    }
+
+    return {
+      id: comment.id,
+      author: String(comment.author || '').trim(),
+      createdAt: String(comment.createdAt || '').trim(),
+      updatedAt: String(comment.updatedAt || comment.createdAt || '').trim(),
+      url: String(comment.url || issue.html_url || '').trim(),
+      body: normalizeWhitespace(comment.body || ''),
+    };
+  });
   const issueThread = {
     repoFullName: repoMetadata.fullName,
     number: issue.number,
@@ -926,16 +1009,54 @@ function buildIssueThread(repoMetadata, issue, comments) {
   };
 }
 
+async function fetchIssueWorkspaceSnapshot(config, issueNumber, issueUrl = '') {
+  const branchName = `issue-${issueNumber}`;
+  const artifactPath = `workspaces/issue-${issueNumber}/issue.md`;
+
+  try {
+    const data = await githubRequest(
+      config,
+      `/repos/${config.owner}/${config.repo}/contents/${artifactPath}?ref=${encodeURIComponent(branchName)}`,
+    );
+
+    if (typeof data?.content !== 'string' || data.content.trim() === '') {
+      return null;
+    }
+
+    if (data.encoding !== 'base64') {
+      return null;
+    }
+
+    const markdown = decodeBase64Utf8(data.content);
+    return {
+      branchName,
+      artifactPath,
+      markdown,
+      comments: parseArchivedIssueComments(markdown, issueUrl),
+    };
+  } catch (error) {
+    if (isMissingGitHubContentError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 async function loadIssueThreads(config, repoMetadata, rawIssues) {
   return mapWithConcurrency(
     rawIssues,
     DEFAULT_GITHUB_CONCURRENCY,
     async (issue) => {
-      const comments =
+      const liveComments =
         Number.isInteger(issue.comments) && issue.comments > 0
           ? await fetchIssueComments(config, issue.number)
           : [];
-      return buildIssueThread(repoMetadata, issue, comments);
+      const archivedSnapshot = liveComments.length === 0
+        ? await fetchIssueWorkspaceSnapshot(config, issue.number, issue.html_url)
+        : null;
+      return buildIssueThread(repoMetadata, issue, liveComments, {
+        archivedSnapshot,
+      });
     },
   );
 }

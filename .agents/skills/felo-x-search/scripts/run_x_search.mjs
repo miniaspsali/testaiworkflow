@@ -189,7 +189,7 @@ function usage() {
       '  --since-time <val>     Start time filter',
       '  --until-time <val>     End time filter',
       '  -j, --json             Output raw JSON',
-      '  -t, --timeout <ms>     Request timeout in ms (default: 30000)',
+      '  -t, --timeout <seconds> Request timeout in seconds (default: 30)',
       '  --help                 Show this help',
     ].join('\n'),
   );
@@ -230,7 +230,7 @@ function parseArgs(argv) {
     else if (a === '--until-time') { out.untilTime = argv[++i]; }
     else if (a === '-t' || a === '--timeout') {
       const n = parseInt(argv[++i] || '', 10);
-      if (Number.isFinite(n) && n > 0) out.timeoutMs = n;
+      if (Number.isFinite(n) && n > 0) out.timeoutMs = n * 1000;
     }
     else if (!a.startsWith('-')) { positional.push(a); }
   }

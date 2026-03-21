@@ -97,42 +97,46 @@ ${H}`)}return X},CY=lh(CR);class aX extends rX{create(Z,$){var Q;let{api_version
 [內容因長度限制已截斷]`,truncated:!0}}async function fW(Z,$={}){let Q=new AbortController,Y=setTimeout(()=>Q.abort(),HD);try{return await fetch(Z,{...$,signal:Q.signal})}catch(J){if(J?.name==="AbortError")throw Error(`抓取逾時（${HD/1000} 秒）：${Z}`);throw J}finally{clearTimeout(Y)}}function OJ(Z){try{let $=new URL(Z);return $.protocol==="http:"||$.protocol==="https:"}catch{return!1}}async function $p(Z){for await(let $ of Z)if($.event_type==="content.delta"&&$.delta?.type==="text"&&$.delta.text)process.stdout.write($.delta.text);process.stdout.write(`
 `)}function Qp(){let Z=process.argv.slice(2),$=null,Q=null;for(let Y=0;Y<Z.length;Y++)if(Z[Y]==="--type"&&Y+1<Z.length){if($=Z[++Y],!["url","pdf","video","audio"].includes($))throw Error(`不支援的類型：${$}（可用：url, pdf, video, audio）`)}else if(!Q)Q=Z[Y];return{type:$,input:Q}}function Yp(Z){if(!Z)throw Error("請提供輸入（URL 或檔案路徑）。");if(Z.startsWith("data:"))return"video";if(OJ(Z))try{let Y=new URL(Z),J=Y.pathname.toLowerCase();if(J.endsWith(".pdf"))return"pdf";let K=N4.extname(J);if(CW.has(K))return"video";if(yW.has(K))return"audio";if(om.has(Y.hostname))return"video";return"url"}catch{return"url"}let $=Z;if(Z.startsWith("file://"))$=DJ(Z);let Q=N4.extname($).toLowerCase();if(Q===".pdf")return"pdf";if(CW.has(Q))return"video";if(yW.has(Q))return"audio";throw Error(`無法辨識輸入類型：${Z}。支援的格式：網頁 URL、.pdf 檔案、影片檔案（${[...CW].join(", ")}）、音訊檔案（${[...yW].join(", ")}）`)}async function Jp(Z){let $=await fW(Z,{redirect:"follow",headers:{"User-Agent":"GitHubClawDev/summary (+https://github.com/rewq0494/GitHubClawDev)",Accept:"text/html,application/xhtml+xml"}});if(!$.ok)throw Error(`抓取網址失敗：${Z}（HTTP ${$.status} ${$.statusText}）`);let Q=$.headers.get("content-type")||"";if(Q.includes("application/pdf"))return{__pdfFallback:!0};if(!Q.includes("text/html")&&!Q.includes("application/xhtml+xml"))throw Error(`網址不是可解析的 HTML 頁面：${Z}（Content-Type: ${Q||"unknown"}）。若為 PDF，請改用 --type pdf`);return $.text()}function Kp(Z){let $=Z.querySelector("main, article, body"),Q=r6(Z.querySelector("title")?.textContent||"")||"未命名頁面",Y=r6(Z.querySelector('meta[property="og:site_name"]')?.getAttribute("content")||"")||null;return{title:Q,siteName:Y,byline:null,excerpt:null,content:r6($?.textContent||""),source:"body-fallback"}}function Xp(Z,$){let{document:Q,window:Y}=UD(Z);if(Y?.document&&!Y.document.location)Y.document.location=new URL($);let J=new PD.Readability(Q).parse();if(!J?.textContent)return Kp(Q);return{title:r6(J.title)||"未命名頁面",siteName:r6(J.siteName||"")||null,byline:r6(J.byline||"")||null,excerpt:r6(J.excerpt||"")||null,content:r6(J.textContent),source:"readability"}}function zp({url:Z,title:$,siteName:Q,byline:Y,excerpt:J,content:K,truncated:X}){return`你是一個專門整理網頁內容的繁體中文編輯。請根據以下資料，輸出固定格式的 Markdown 摘要。
 
-規則：
-1. 全文必須使用繁體中文（zh-TW）。
-2. 不要虛構原文沒有提到的資訊。
-3. 若資訊不足，直接寫出限制。
-4. 「三段摘要」必須剛好三段，每段至少 3–4 句，深入說明主題脈絡與細節，而非僅一句帶過。
-5. 「重點條列」至少 7 點，每點需包含具體細節或範例。
-6. 「行動建議」若沒有合理建議，請寫「目前無明確行動建議」。
-7. 只輸出最終 Markdown，不要額外說明。
-8. 盡可能保留原文的專有名詞（括號附上原文）。
-9. 如有關鍵數字、日期、百分比等資料，請準確引用。
+任務目標：
+1. 深入理解文章內容，提供有深度與細節的摘要，避免過於簡略空泛。
+2. 絕對不要虛構（Hallucination）原文沒有提及的資訊。若資訊不足以形成某個段落，請直接省略該部分或註明資訊不足。
+3. 全文必須使用繁體中文（zh-TW），並盡可能保留原文的專有名詞（可於括號內附上原文）。
 
-請使用以下格式：
+格式規範（重要）：
+- 標題請用粗體加 emoji，例如「**\uD83D\uDCDD 內容摘要**」，不要使用 # 標題語法。
+- 不要使用 Markdown 表格（| 語法），改用條列格式。
+- 條列項目一律使用扁平結構（只用 - 開頭），不要使用編號子列表（1. 2. 3.）或巢狀縮排。
+- 條列項目中若需標示重點名稱，直接寫在 - 後面即可，不要在條列內再使用粗體。
+- 這些規則是為了確保輸出在 GitHub Issue 和 Telegram 都能正確顯示。
 
-# 內容摘要
+請依照以下結構輸出：
 
-## 來源
+**\uD83D\uDCDD 內容摘要**
+
+**\uD83D\uDCCC 來源**
 - 類型：網頁
 - 標題：
 - 網站：
 - 作者：
 - 網址：
 
-## 三段摘要
-（每段 3–4 句的深入摘要）
+**\uD83D\uDCA1 核心概述**
+（請以流暢的段落整理文章的脈絡。包含：文章的主題背景、關鍵論點/方法、以及最終結論。請視原文的豐富度來決定篇幅，確保能完整傳達作者的原意與重要細節。）
 
-## 重點條列
-- ...（至少 7 點，含具體細節）
+**\uD83D\uDD0D 重點條列**
+（請萃取原文中最具價值的重點。數量請依據原文內容決定，寧缺勿濫。每個重點請盡量包含具體的細節、範例或解釋，不要僅用一句話帶過。）
+- 重點 1：具體說明...
+- 重點 2：具體說明...
 
-## 關鍵數字與日期
-| 項目 | 數值/日期 |
-|------|----------|
-（如有關鍵數字、金額、日期、百分比等，以表格呈現；若無則省略此段）
+**\uD83D\uDCCA 關鍵數據與事實**
+（如原文有關鍵數字、金額、日期、百分比等，請用條列呈現；若無相關資訊則省略此段）
+- 項目：數值/日期/事實
+- 項目：數值/日期/事實
 
-## 行動建議
-- ...
+**\uD83C\uDFAF 行動建議**
+（若文章內容有提供建議或可執行的步驟，請在此條列；若無明確建議，請寫「目前無明確行動建議」）
 
+---
 以下是原始資料：
 - 標題：${$}
 - 網站：${Q||"未提供"}
@@ -144,104 +148,116 @@ ${H}`)}return X},CY=lh(CR);class aX extends rX{create(Z,$){var Q;let{api_version
 原文內容：
 """
 ${K}
-"""`}async function Wp(Z,$){let Q=(()=>{try{return new URL(Z).toString()}catch{throw Error(`網址格式錯誤：${Z}`)}})();console.error(`正在抓取網址：${Q}`);let Y=await Jp(Q);if(Y&&Y.__pdfFallback)return{__pdfFallback:!0,url:Q};console.error("正在抽取正文...");let J=Xp(Y,Q),K=Zp(J.content);if(K.text.length<am)throw Error(`無法從頁面抽出足夠正文：${Q}。這可能是登入頁、動態頁，或頁面內容過少。`);return{dryRunInfo:{detectedType:"url",url:Q,title:J.title,siteName:J.siteName,byline:J.byline,source:J.source,contentLength:K.text.length,truncated:K.truncated,preview:K.text.slice(0,280)},model:MJ.url,interactionInput:zp({url:Q,title:J.title,siteName:J.siteName,byline:J.byline,excerpt:J.excerpt,content:K.text,truncated:K.truncated}),cleanup:null}}function Vp(){return`你是專業的文件分析助手。請仔細閱讀這份 PDF 文件的每一頁，並產出結構化的繁體中文摘要。請盡可能完整地涵蓋文件中的所有重要內容。
+"""`}async function Wp(Z,$){let Q=(()=>{try{return new URL(Z).toString()}catch{throw Error(`網址格式錯誤：${Z}`)}})();console.error(`正在抓取網址：${Q}`);let Y=await Jp(Q);if(Y&&Y.__pdfFallback)return{__pdfFallback:!0,url:Q};console.error("正在抽取正文...");let J=Xp(Y,Q),K=Zp(J.content);if(K.text.length<am)throw Error(`無法從頁面抽出足夠正文：${Q}。這可能是登入頁、動態頁，或頁面內容過少。`);return{dryRunInfo:{detectedType:"url",url:Q,title:J.title,siteName:J.siteName,byline:J.byline,source:J.source,contentLength:K.text.length,truncated:K.truncated,preview:K.text.slice(0,280)},model:MJ.url,interactionInput:zp({url:Q,title:J.title,siteName:J.siteName,byline:J.byline,excerpt:J.excerpt,content:K.text,truncated:K.truncated}),cleanup:null}}function Vp(){return`你是專業的文件分析助手。請仔細閱讀這份 PDF 文件的內容，並產出結構化、重點清晰的繁體中文摘要。
 
-請使用以下格式：
+任務目標：
+1. 確保涵蓋文件中各個章節的重要內容，不要只摘要前幾頁。
+2. 絕對不要虛構文件中沒有提到的資訊。
+3. 全文使用繁體中文（zh-TW），保留專有名詞的原文（括號附上）。
+4. 數字和日期必須準確引用，不可估算。
 
-# 內容摘要
+格式規範（重要）：
+- 標題請用粗體加 emoji，例如「**\uD83D\uDCDD 內容摘要**」，不要使用 # 標題語法。
+- 不要使用 Markdown 表格（| 語法），改用條列格式。
+- 條列項目一律使用扁平結構（只用 - 開頭），不要使用編號子列表（1. 2. 3.）或巢狀縮排。
+- 條列項目中若需標示重點名稱，直接寫在 - 後面即可，不要在條列內再使用粗體。
+- 這些規則是為了確保輸出在 GitHub Issue 和 Telegram 都能正確顯示。
 
-## 來源
+請依照以下結構輸出：
+
+**\uD83D\uDCDD 內容摘要**
+
+**\uD83D\uDCCC 來源**
 - 類型：PDF 文件
-- 檔名：（請從文件內容推斷）
+- 檔名：（請從文件內容或脈絡推斷標題）
 
-## 三段摘要
-（三段完整摘要，每段至少 3–4 句，深入說明文件的核心主題、關鍵論述與結論。第一段介紹文件的主旨與背景，第二段展開核心內容與方法論，第三段總結結論與影響。）
+**\uD83D\uDCA1 核心概述**
+（請以流暢的段落整理文件的核心脈絡，包含：文件主旨與背景、主要探討的方法論或內容、以及結論與影響。請依據文件厚度與資訊量調整篇幅，確保重要細節不遺漏。）
 
-## 重點條列
-- 重點 1
-- 重點 2
-（至少列出 7 個重點，每點需包含具體細節、數據或範例，不要僅用一句概括）
+**\uD83D\uDD0D 重點條列**
+（請萃取文件中的重要論點、發現或規範。數量請視文件內容而定。每點需包含具體細節、數據或範例說明。）
+- 重點說明...
 
-## 關鍵數字與日期
-| 項目 | 數值/日期 |
-|------|----------|
-（如有關鍵數字、金額、日期、百分比等，以表格呈現；若無則省略此段）
+**\uD83D\uDCCA 關鍵數據與事實**
+（如有關鍵數字、金額、日期、百分比等，請用條列呈現；若無則省略此段）
+- 項目：數值/日期
+- 項目：數值/日期
 
-## 專有名詞表
-| 術語 | 說明 |
-|------|------|
-（列出文件中出現的重要專有名詞與其簡要解釋，至少 5 個；若無明顯專有名詞則省略此段）
+**\uD83D\uDCD6 專有名詞表**
+（若文件中有頻繁出現或具關鍵性的專業術語，請用條列並簡要解釋；若無則省略此段）
+- **術語**：說明
+- **術語**：說明
 
-## 行動建議
-（文件的主要結論，或閱讀後的建議行動，至少 2–3 點具體建議）
+**\uD83C\uDFAF 行動建議**
+（若文件包含後續計畫、建議採取的步驟或管理決策，請在此整理出來；若無則寫「目前無明確行動建議」）`}async function kW(Z){if(!Z)throw Error("請提供 PDF 檔案路徑或 URL。");if(!Z.toLowerCase().endsWith(".pdf"))try{if(!new URL(Z).pathname.toLowerCase().endsWith(".pdf"))console.error(`警告：輸入不像 PDF 檔案，仍嘗試處理：${Z}`)}catch{console.error(`警告：輸入不像 PDF 檔案，仍嘗試處理：${Z}`)}let Q=Z;if(Z.startsWith("file://"))Q=DJ(Z);let Y=N4.resolve(Q);try{return{source:"local-file",buffer:await xW(Y),mimeType:"application/pdf",localPath:Y,displayName:N4.basename(Y)}}catch(J){if(J?.code!=="ENOENT"&&J?.code!=="ENOTDIR")throw Error(`無法讀取檔案 "${Y}"：${J.message}`)}if(OJ(Z)){console.error(`正在下載 PDF：${Z}`);let J=await fW(Z);if(!J.ok)throw Error(`下載失敗（HTTP ${J.status}）：${Z}`);let K=Buffer.from(await J.arrayBuffer()),X=new URL(Z).pathname;return{source:"remote-url",buffer:K,mimeType:"application/pdf",remoteUrl:Z,displayName:N4.basename(X)||"document.pdf"}}throw Error(`輸入既非可讀取的本地檔案，也非有效的 URL：${Z}`)}async function Gp(Z,$){console.error("正在上傳 PDF 至 Gemini Files API...");let Q=new Blob([$.buffer],{type:$.mimeType}),Y=await Z.files.upload({file:Q,config:{mimeType:$.mimeType,displayName:$.displayName}});while(Y.state==="PROCESSING")await new Promise((J)=>setTimeout(J,2000)),Y=await Z.files.get({name:Y.name});if(Y.state==="FAILED")throw Error(`Gemini Files API 處理失敗：${Y.name}`);return{uri:Y.uri,name:Y.name}}async function BD(Z,$){let Q=await kW(Z),Y={detectedType:"pdf",source:Q.source,mimeType:Q.mimeType,localPath:Q.localPath||null,remoteUrl:Q.remoteUrl||null,bufferBytes:Q.buffer.length,displayName:Q.displayName};console.error(`正在分析 PDF：${Z}`);let{uri:J,name:K}=await Gp($,Q);return console.error(`已上傳：${K}`),{dryRunInfo:Y,model:MJ.pdf,interactionInput:[{type:"text",text:Vp()},{type:"document",uri:J,mime_type:Q.mimeType}],cleanup:async()=>{await $.files.delete({name:K}).catch(()=>{})}}}function qp(Z){return nm[N4.extname(Z).toLowerCase()]||"video/mp4"}function Fp(){return`你是一個專業的影片內容分析師。請仔細觀看這段影片的完整內容，並產出結構化、重點清晰的繁體中文摘要。
 
-規則：
-1. 全文使用繁體中文（zh-TW）
-2. 不要虛構文件中沒有提到的資訊
-3. 保留專有名詞的原文（括號附上）
-4. 數字和日期必須準確引用，不可估算
-5. 只輸出最終 Markdown，不要額外說明
-6. 每一頁的重要內容都應被涵蓋，不要只摘要前幾頁`}async function kW(Z){if(!Z)throw Error("請提供 PDF 檔案路徑或 URL。");if(!Z.toLowerCase().endsWith(".pdf"))try{if(!new URL(Z).pathname.toLowerCase().endsWith(".pdf"))console.error(`警告：輸入不像 PDF 檔案，仍嘗試處理：${Z}`)}catch{console.error(`警告：輸入不像 PDF 檔案，仍嘗試處理：${Z}`)}let Q=Z;if(Z.startsWith("file://"))Q=DJ(Z);let Y=N4.resolve(Q);try{return{source:"local-file",buffer:await xW(Y),mimeType:"application/pdf",localPath:Y,displayName:N4.basename(Y)}}catch(J){if(J?.code!=="ENOENT"&&J?.code!=="ENOTDIR")throw Error(`無法讀取檔案 "${Y}"：${J.message}`)}if(OJ(Z)){console.error(`正在下載 PDF：${Z}`);let J=await fW(Z);if(!J.ok)throw Error(`下載失敗（HTTP ${J.status}）：${Z}`);let K=Buffer.from(await J.arrayBuffer()),X=new URL(Z).pathname;return{source:"remote-url",buffer:K,mimeType:"application/pdf",remoteUrl:Z,displayName:N4.basename(X)||"document.pdf"}}throw Error(`輸入既非可讀取的本地檔案，也非有效的 URL：${Z}`)}async function Gp(Z,$){console.error("正在上傳 PDF 至 Gemini Files API...");let Q=new Blob([$.buffer],{type:$.mimeType}),Y=await Z.files.upload({file:Q,config:{mimeType:$.mimeType,displayName:$.displayName}});while(Y.state==="PROCESSING")await new Promise((J)=>setTimeout(J,2000)),Y=await Z.files.get({name:Y.name});if(Y.state==="FAILED")throw Error(`Gemini Files API 處理失敗：${Y.name}`);return{uri:Y.uri,name:Y.name}}async function BD(Z,$){let Q=await kW(Z),Y={detectedType:"pdf",source:Q.source,mimeType:Q.mimeType,localPath:Q.localPath||null,remoteUrl:Q.remoteUrl||null,bufferBytes:Q.buffer.length,displayName:Q.displayName};console.error(`正在分析 PDF：${Z}`);let{uri:J,name:K}=await Gp($,Q);return console.error(`已上傳：${K}`),{dryRunInfo:Y,model:MJ.pdf,interactionInput:[{type:"text",text:Vp()},{type:"document",uri:J,mime_type:Q.mimeType}],cleanup:async()=>{await $.files.delete({name:K}).catch(()=>{})}}}function qp(Z){return nm[N4.extname(Z).toLowerCase()]||"video/mp4"}function Fp(){return`你是一個專業的影片內容分析師。請仔細觀看這段影片的完整內容，並產出結構化的繁體中文 Markdown 摘要。
+任務目標：
+1. 確保涵蓋影片從頭到尾的重要段落，不要只摘要開頭。
+2. 絕對不要虛構影片中沒有出現的資訊。
+3. 全文使用繁體中文（zh-TW），保留專有名詞的原文（括號附上）。
 
-請使用以下格式：
+格式規範（重要）：
+- 標題請用粗體加 emoji，例如「**\uD83D\uDCDD 內容摘要**」，不要使用 # 標題語法。
+- 不要使用 Markdown 表格（| 語法），改用條列格式。
+- 條列項目一律使用扁平結構（只用 - 開頭），不要使用編號子列表（1. 2. 3.）或巢狀縮排。
+- 條列項目中若需標示重點名稱，直接寫在 - 後面即可，不要在條列內再使用粗體。
+- 這些規則是為了確保輸出在 GitHub Issue 和 Telegram 都能正確顯示。
 
-# 內容摘要
+請依照以下結構輸出：
 
-## 來源
+**\uD83D\uDCDD 內容摘要**
+
+**\uD83D\uDCCC 來源**
 - 類型：影片
 
-## 三段摘要
-（三段完整摘要，每段至少 3–4 句。第一段介紹影片的主題與背景，第二段展開核心內容與關鍵論點，第三段總結結論與啟示。）
+**\uD83D\uDCA1 核心概述**
+（請以流暢的段落整理影片的脈絡，包含：影片主題與背景、核心內容或關鍵步驟、以及最終結論與啟示。請依據影片長度與資訊豐富度調整篇幅。）
 
-## 重點條列
-- 重點 1
-- 重點 2
-（至少列出 7 個重點，每點需包含具體細節或時間點）
+**\uD83D\uDD0D 重點條列**
+（請萃取影片中的精華重點。數量視內容而定，寧缺勿濫。若影片中有特定的步驟、操作畫面或關鍵論述，請盡量補上具體細節。）
+- 重點說明...
 
-## 關鍵數字與日期
-| 項目 | 數值/日期 |
-|------|----------|
-（如有關鍵數字、金額、日期、百分比等，以表格呈現；若無則省略此段）
+**\uD83D\uDCCA 關鍵數據與事實**
+（如影片中提及關鍵數字、金額、日期、百分比等，請用條列呈現；若無則省略此段）
+- 項目：數值/日期
+- 項目：數值/日期
 
-## 行動建議
-（觀看後的建議行動，至少 2–3 點。若無則寫「目前無明確行動建議」）
+**\uD83C\uDFAF 行動建議**
+（觀看後若有建議行動或下一步，請整理於此；若無則寫「目前無明確行動建議」）`}async function Up(Z){if(!Z)throw Error("請提供影片 URL 或本地檔案路徑。");if(Z.startsWith("data:"))return{source:"data-uri",uri:Z,mimeType:Z.match(/^data:([^;]+);base64,/)?.[1]||"video/mp4"};let $=Z;if(Z.startsWith("file://"))$=DJ(Z);let Q=N4.resolve($);try{let Y=await xW(Q),J=qp(Q);return{source:"local-file",uri:`data:${J};base64,${Y.toString("base64")}`,mimeType:J,localPath:Q}}catch(Y){if(Y?.code!=="ENOENT"&&Y?.code!=="ENOTDIR")throw Error(`無法讀取影片檔案 "${Q}"：${Y.message}`)}if(OJ(Z))return{source:"remote-url",uri:Z,mimeType:"video/mp4"};throw Error(`輸入既非可讀取的本地檔案，也非有效的影片 URL：${Z}`)}async function Hp(Z){let $=await Up(Z);return{dryRunInfo:{detectedType:"video",source:$.source,mimeType:$.mimeType,localPath:$.localPath||null,uriPreview:$.source==="local-file"||$.source==="data-uri"?`${$.uri.slice(0,48)}...`:$.uri},model:MJ.video,interactionInput:[{type:"text",text:Fp()},{type:"video",uri:$.uri,mime_type:$.mimeType}],cleanup:null}}function Bp(Z){return wD[N4.extname(Z).toLowerCase()]||"audio/mpeg"}function Pp(){return`你是一個專業的音訊內容分析師。請仔細聆聽這段音訊的完整內容，並產出結構化、重點清晰的繁體中文摘要。
 
-規則：
-1. 全文使用繁體中文（zh-TW）
-2. 不要虛構影片中沒有出現的資訊
-3. 保留專有名詞的原文（括號附上）
-4. 只輸出最終 Markdown，不要額外說明
-5. 涵蓋影片從頭到尾的所有重要段落，不要只摘要開頭`}async function Up(Z){if(!Z)throw Error("請提供影片 URL 或本地檔案路徑。");if(Z.startsWith("data:"))return{source:"data-uri",uri:Z,mimeType:Z.match(/^data:([^;]+);base64,/)?.[1]||"video/mp4"};let $=Z;if(Z.startsWith("file://"))$=DJ(Z);let Q=N4.resolve($);try{let Y=await xW(Q),J=qp(Q);return{source:"local-file",uri:`data:${J};base64,${Y.toString("base64")}`,mimeType:J,localPath:Q}}catch(Y){if(Y?.code!=="ENOENT"&&Y?.code!=="ENOTDIR")throw Error(`無法讀取影片檔案 "${Q}"：${Y.message}`)}if(OJ(Z))return{source:"remote-url",uri:Z,mimeType:"video/mp4"};throw Error(`輸入既非可讀取的本地檔案，也非有效的影片 URL：${Z}`)}async function Hp(Z){let $=await Up(Z);return{dryRunInfo:{detectedType:"video",source:$.source,mimeType:$.mimeType,localPath:$.localPath||null,uriPreview:$.source==="local-file"||$.source==="data-uri"?`${$.uri.slice(0,48)}...`:$.uri},model:MJ.video,interactionInput:[{type:"text",text:Fp()},{type:"video",uri:$.uri,mime_type:$.mimeType}],cleanup:null}}function Bp(Z){return wD[N4.extname(Z).toLowerCase()]||"audio/mpeg"}function Pp(){return`你是一個專業的音訊內容分析師。請仔細聆聽這段音訊的完整內容，並產出結構化的繁體中文 Markdown 摘要。
+任務目標：
+1. 確保涵蓋音訊從頭到尾的對話或獨白重點。
+2. 絕對不要虛構音訊中沒有出現的資訊。
+3. 全文使用繁體中文（zh-TW），保留專有名詞的原文（括號附上）。
 
-請使用以下格式：
+格式規範（重要）：
+- 標題請用粗體加 emoji，例如「**\uD83D\uDCDD 內容摘要**」，不要使用 # 標題語法。
+- 不要使用 Markdown 表格（| 語法），改用條列格式。
+- 條列項目一律使用扁平結構（只用 - 開頭），不要使用編號子列表（1. 2. 3.）或巢狀縮排。
+- 條列項目中若需標示重點名稱，直接寫在 - 後面即可，不要在條列內再使用粗體。
+- 這些規則是為了確保輸出在 GitHub Issue 和 Telegram 都能正確顯示。
 
-# 內容摘要
+請依照以下結構輸出：
 
-## 來源
+**\uD83D\uDCDD 內容摘要**
+
+**\uD83D\uDCCC 來源**
 - 類型：音訊
 
-## 三段摘要
-（三段完整摘要，每段至少 3–4 句。第一段介紹音訊的主題與背景脈絡，第二段展開核心內容與關鍵論點，第三段總結結論與要點。）
+**\uD83D\uDCA1 核心概述**
+（請以流暢的段落整理音訊的脈絡，包含：討論主題與背景、核心對話內容或關鍵論點、以及結論。請依據音訊長度與資訊豐富度調整篇幅。）
 
-## 重點條列
-- 重點 1
-- 重點 2
-（至少列出 7 個重點，每點需包含具體細節）
+**\uD83D\uDD0D 重點條列**
+（請萃取音訊中的精華論點或對話重點。數量視內容而定，寧缺勿濫。盡可能保留講者的具體舉例或重要細節。）
+- 重點說明...
 
-## 關鍵數字與日期
-| 項目 | 數值/日期 |
-|------|----------|
-（如有關鍵數字、金額、日期、百分比等，以表格呈現；若無則省略此段）
+**\uD83D\uDCCA 關鍵數據與事實**
+（如音訊中提及關鍵數字、金額、日期等，請用條列呈現；若無則省略此段）
+- 項目：數值/日期
+- 項目：數值/日期
 
-## 行動建議
-（聆聽後的建議行動，至少 2–3 點。若無則寫「目前無明確行動建議」）
-
-規則：
-1. 全文使用繁體中文（zh-TW）
-2. 不要虛構音訊中沒有出現的資訊
-3. 保留專有名詞的原文（括號附上）
-4. 只輸出最終 Markdown，不要額外說明
-5. 涵蓋音訊從頭到尾的所有重要段落，不要只摘要開頭`}async function RD(Z){if(!Z)throw Error("請提供音訊檔案路徑或 URL。");let $=Z;if(Z.startsWith("file://"))$=DJ(Z);let Q=N4.resolve($);try{let Y=await xW(Q),J=Bp(Q);return{source:"local-file",buffer:Y,mimeType:J,localPath:Q,displayName:N4.basename(Q)}}catch(Y){if(Y?.code!=="ENOENT"&&Y?.code!=="ENOTDIR")throw Error(`無法讀取音訊檔案 "${Q}"：${Y.message}`)}if(OJ(Z)){console.error(`正在下載音訊：${Z}`);let Y=await fW(Z);if(!Y.ok)throw Error(`下載失敗（HTTP ${Y.status}）：${Z}`);let J=Buffer.from(await Y.arrayBuffer()),K=new URL(Z).pathname,X=N4.extname(K).toLowerCase();return{source:"remote-url",buffer:J,mimeType:wD[X]||"audio/mpeg",remoteUrl:Z,displayName:N4.basename(K)||"audio.mp3"}}throw Error(`輸入既非可讀取的本地檔案，也非有效的音訊 URL：${Z}`)}async function wp(Z,$){let Q=await RD(Z),Y={detectedType:"audio",source:Q.source,mimeType:Q.mimeType,localPath:Q.localPath||null,remoteUrl:Q.remoteUrl||null,bufferBytes:Q.buffer.length,displayName:Q.displayName};console.error(`正在分析音訊：${Z}`);let J=new Blob([Q.buffer],{type:Q.mimeType}),K=await $.files.upload({file:J,config:{mimeType:Q.mimeType,displayName:Q.displayName}});while(K.state==="PROCESSING")await new Promise((W)=>setTimeout(W,2000)),K=await $.files.get({name:K.name});if(K.state==="FAILED")throw Error(`Gemini Files API 處理失敗：${K.name}`);let X=K.name;return console.error(`已上傳：${X}`),{dryRunInfo:Y,model:MJ.audio,interactionInput:[{type:"text",text:Pp()},{type:"document",uri:K.uri,mime_type:Q.mimeType}],cleanup:async()=>{await $.files.delete({name:X}).catch(()=>{})}}}async function Rp(){let{type:Z,input:$}=Qp();if(!$)tm(),process.exit(1);let Q=Z||Yp($);console.error(`偵測到輸入類型：${Q}`);let Y=process.env.SUMMARY_DRY_RUN==="1",J=null;if(!Y){let X=em();J=new eX({apiKey:X})}let K;switch(Q){case"url":if(K=await Wp($,J),K&&K.__pdfFallback){if(console.error("偵測到 PDF Content-Type，自動切換至 PDF 處理器..."),!J){let X=await kW(K.url);process.stdout.write(`${JSON.stringify({detectedType:"pdf",source:X.source,mimeType:X.mimeType,localPath:X.localPath||null,remoteUrl:X.remoteUrl||null,bufferBytes:X.buffer.length,displayName:X.displayName},null,2)}
+**\uD83C\uDFAF 行動建議**
+（聆聽後若有明確的建議行動或後續規劃，請整理於此；若無則寫「目前無明確行動建議」）`}async function RD(Z){if(!Z)throw Error("請提供音訊檔案路徑或 URL。");let $=Z;if(Z.startsWith("file://"))$=DJ(Z);let Q=N4.resolve($);try{let Y=await xW(Q),J=Bp(Q);return{source:"local-file",buffer:Y,mimeType:J,localPath:Q,displayName:N4.basename(Q)}}catch(Y){if(Y?.code!=="ENOENT"&&Y?.code!=="ENOTDIR")throw Error(`無法讀取音訊檔案 "${Q}"：${Y.message}`)}if(OJ(Z)){console.error(`正在下載音訊：${Z}`);let Y=await fW(Z);if(!Y.ok)throw Error(`下載失敗（HTTP ${Y.status}）：${Z}`);let J=Buffer.from(await Y.arrayBuffer()),K=new URL(Z).pathname,X=N4.extname(K).toLowerCase();return{source:"remote-url",buffer:J,mimeType:wD[X]||"audio/mpeg",remoteUrl:Z,displayName:N4.basename(K)||"audio.mp3"}}throw Error(`輸入既非可讀取的本地檔案，也非有效的音訊 URL：${Z}`)}async function wp(Z,$){let Q=await RD(Z),Y={detectedType:"audio",source:Q.source,mimeType:Q.mimeType,localPath:Q.localPath||null,remoteUrl:Q.remoteUrl||null,bufferBytes:Q.buffer.length,displayName:Q.displayName};console.error(`正在分析音訊：${Z}`);let J=new Blob([Q.buffer],{type:Q.mimeType}),K=await $.files.upload({file:J,config:{mimeType:Q.mimeType,displayName:Q.displayName}});while(K.state==="PROCESSING")await new Promise((W)=>setTimeout(W,2000)),K=await $.files.get({name:K.name});if(K.state==="FAILED")throw Error(`Gemini Files API 處理失敗：${K.name}`);let X=K.name;return console.error(`已上傳：${X}`),{dryRunInfo:Y,model:MJ.audio,interactionInput:[{type:"text",text:Pp()},{type:"document",uri:K.uri,mime_type:Q.mimeType}],cleanup:async()=>{await $.files.delete({name:X}).catch(()=>{})}}}async function Rp(){let{type:Z,input:$}=Qp();if(!$)tm(),process.exit(1);let Q=Z||Yp($);console.error(`偵測到輸入類型：${Q}`);let Y=process.env.SUMMARY_DRY_RUN==="1",J=null;if(!Y){let X=em();J=new eX({apiKey:X})}let K;switch(Q){case"url":if(K=await Wp($,J),K&&K.__pdfFallback){if(console.error("偵測到 PDF Content-Type，自動切換至 PDF 處理器..."),!J){let X=await kW(K.url);process.stdout.write(`${JSON.stringify({detectedType:"pdf",source:X.source,mimeType:X.mimeType,localPath:X.localPath||null,remoteUrl:X.remoteUrl||null,bufferBytes:X.buffer.length,displayName:X.displayName},null,2)}
 `);return}K=await BD(K.url,J)}break;case"pdf":if(!J){let X=await kW($);process.stdout.write(`${JSON.stringify({detectedType:"pdf",source:X.source,mimeType:X.mimeType,localPath:X.localPath||null,remoteUrl:X.remoteUrl||null,bufferBytes:X.buffer.length,displayName:X.displayName},null,2)}
 `);return}K=await BD($,J);break;case"video":K=await Hp($);break;case"audio":if(!J){let X=await RD($);process.stdout.write(`${JSON.stringify({detectedType:"audio",source:X.source,mimeType:X.mimeType,localPath:X.localPath||null,remoteUrl:X.remoteUrl||null,bufferBytes:X.buffer.length,displayName:X.displayName},null,2)}
 `);return}K=await wp($,J);break;default:throw Error(`不支援的類型：${Q}`)}if(Y){process.stdout.write(`${JSON.stringify(K.dryRunInfo,null,2)}

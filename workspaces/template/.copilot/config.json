@@ -1,5 +1,15 @@
 {
   "experimental": true,
   "model": "gpt-5-mini",
-  "reasoning_effort": "xhigh"
+  "reasoning_effort": "xhigh",
+  "auto_update": false,
+  "trusted_folders": [
+    "../../.github/scripts",
+    "../../.github/hooks",
+    "../../.memory",
+    "../../.agents"
+  ],
+  "asked_setup_terminals": [
+    "windows-terminal"
+  ]
 }
