@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": ".github/hooks/pre-tool-use.sh",
+        "cwd": ".",
+        "timeoutSec": 10,
+        "comment": "Block gh CLI and GitHub REST API usage (including MCP server tools)"
+      }
+    ]
+  }
+}

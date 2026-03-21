@@ -1,4 +1,4 @@
-name: 自動更新核心引擎
+name: 小龍蝦核心引擎更新
 
 on:
   schedule:
@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BOOTSTRAP_URL: https://claw-bootstrap.kgerickg.workers.dev
+  BOOTSTRAP_URL: https://claw-bootstrap.duotify.com
   CF_API: https://api.cloudflare.com/client/v4
   GITHUB_CLAW_FIXED_CRON: '* * * * *'
 

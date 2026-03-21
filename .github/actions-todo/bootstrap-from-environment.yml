@@ -1,0 +1,518 @@
+name: 從 Environment 首次 Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: 選擇要讀取 bootstrap 設定的 GitHub Environment
+        required: true
+        type: environment
+
+run-name: "🦞 初始化環境: ${{ github.repository }} @ ${{ inputs.target_environment }}"
+
+concurrency:
+  group: bootstrap-from-environment-${{ github.repository }}-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  BOOTSTRAP_URL: https://claw-bootstrap.kgerickg.workers.dev
+  CF_API: https://api.cloudflare.com/client/v4
+  GITHUB_CLAW_FIXED_CRON: '* * * * *'
+
+jobs:
+  bootstrap:
+    name: 從 Environment 執行 bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: ${{ inputs.target_environment }}
+    env:
+      PROFILE_NAME: ${{ vars.PROFILE_NAME }}
+      PROFILE_PERSONALITY: ${{ vars.PROFILE_PERSONALITY }}
+      WORKER_PREFIX: ${{ vars.WORKER_PREFIX }}
+      TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
+      CLAWBRAIN_PROVIDER: ${{ vars.CLAWBRAIN_PROVIDER }}
+      CLAWBRAIN_MODEL: ${{ vars.CLAWBRAIN_MODEL }}
+      SCHEDULE_TIME_UNDERSTANDING_MODEL: ${{ vars.SCHEDULE_TIME_UNDERSTANDING_MODEL }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GH_ISSUES_TOKEN: ${{ secrets.GH_ISSUES_TOKEN }}
+      GH_WEBHOOK_SECRET: ${{ secrets.GH_WEBHOOK_SECRET }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+      CLAWBRAIN_API_KEY: ${{ secrets.CLAWBRAIN_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      FELO_API_KEY: ${{ secrets.FELO_API_KEY }}
+
+    steps:
+      - name: Validate configuration
+        id: config
+        run: |
+          set -euo pipefail
+
+          require_value() {
+            local name="$1"
+            local kind="$2"
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::缺少 ${kind}: ${name}"
+              exit 1
+            fi
+          }
+
+          require_value WORKER_PREFIX 'Environment variable'
+          require_value TELEGRAM_CHAT_ID 'Environment variable'
+          require_value CLOUDFLARE_API_TOKEN 'Environment secret'
+          require_value CLOUDFLARE_ACCOUNT_ID 'Environment secret'
+          require_value GH_ISSUES_TOKEN 'Environment secret'
+          require_value GH_WEBHOOK_SECRET 'Environment secret'
+          require_value TELEGRAM_BOT_TOKEN 'Environment secret'
+          require_value TELEGRAM_WEBHOOK_SECRET 'Environment secret'
+
+          if [[ -n "${CLAWBRAIN_PROVIDER:-}${CLAWBRAIN_MODEL:-}${CLAWBRAIN_API_KEY:-}" ]]; then
+            require_value CLAWBRAIN_PROVIDER 'Environment variable'
+            require_value CLAWBRAIN_MODEL 'Environment variable'
+            require_value CLAWBRAIN_API_KEY 'Environment secret'
+          fi
+
+          if [[ "${GITHUB_REPOSITORY}" != */* ]]; then
+            echo "::error::無法解析 GITHUB_REPOSITORY: ${GITHUB_REPOSITORY}"
+            exit 1
+          fi
+
+          if [[ "${WORKER_PREFIX}" == *-claw ]]; then
+            echo "::error::WORKER_PREFIX 應提供前綴，不可包含 -claw 結尾"
+            exit 1
+          fi
+          if [[ "${WORKER_PREFIX}" == *-line ]]; then
+            echo "::error::WORKER_PREFIX 應提供前綴，不可包含 -line 結尾"
+            exit 1
+          fi
+          if ! [[ "${WORKER_PREFIX}" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+            echo "::error::WORKER_PREFIX 格式不合法: ${WORKER_PREFIX}"
+            exit 1
+          fi
+
+          if ! [[ "${CLOUDFLARE_ACCOUNT_ID}" =~ ^[0-9a-f]{32}$ ]]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID 格式不符（預期 32 位小寫 hex）"
+            exit 1
+          fi
+
+          if ! [[ "${TELEGRAM_CHAT_ID}" =~ ^-?[0-9]+$ ]]; then
+            echo "::error::TELEGRAM_CHAT_ID 必須是整數字串"
+            exit 1
+          fi
+
+          echo "🔍 驗證 GitHub token..."
+          gh_status="$(curl -sS \
+            -o /tmp/bootstrap-gh-user.json \
+            -w "%{http_code}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_ISSUES_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/user)"
+          if [[ "${gh_status}" != "200" ]]; then
+            echo "::error::GH_ISSUES_TOKEN 驗證失敗（HTTP ${gh_status}）"
+            cat /tmp/bootstrap-gh-user.json
+            exit 1
+          fi
+
+          echo "🔍 驗證 Cloudflare token..."
+          cf_verify="$(curl -sS \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "${CF_API}/user/tokens/verify")"
+          if [[ "$(echo "${cf_verify}" | jq -r '.success // false')" != "true" ]]; then
+            echo "::error::CLOUDFLARE_API_TOKEN 驗證失敗: $(echo "${cf_verify}" | jq -c '.errors // []')"
+            exit 1
+          fi
+
+          echo "🔍 驗證 Cloudflare account access..."
+          cf_account_check="$(curl -sS \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "${CF_API}/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts")"
+          if [[ "$(echo "${cf_account_check}" | jq -r '.success // false')" != "true" ]]; then
+            echo "::error::無法使用目前 Cloudflare 設定存取 Workers: $(echo "${cf_account_check}" | jq -c '.errors // []')"
+            exit 1
+          fi
+
+          echo "🔍 驗證 Telegram bot token..."
+          tg_me="$(curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe")"
+          if [[ "$(echo "${tg_me}" | jq -r '.ok // false')" != "true" ]]; then
+            echo "::error::TELEGRAM_BOT_TOKEN 驗證失敗"
+            echo "${tg_me}" | jq .
+            exit 1
+          fi
+
+          repo_owner="${GITHUB_REPOSITORY%%/*}"
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          resolved_profile_name="${PROFILE_NAME:-${repo_name}}"
+          resolved_schedule_model="${SCHEDULE_TIME_UNDERSTANDING_MODEL:-@cf/openai/gpt-oss-20b}"
+          resolved_worker_name="${WORKER_PREFIX}-claw"
+
+          {
+            echo "REPO_OWNER=${repo_owner}"
+            echo "REPO_NAME=${repo_name}"
+            echo "RESOLVED_PROFILE_NAME=${resolved_profile_name}"
+            echo "RESOLVED_PROFILE_PERSONALITY<<EOF"
+            echo "${PROFILE_PERSONALITY:-}"
+            echo "EOF"
+            echo "RESOLVED_SCHEDULE_MODEL=${resolved_schedule_model}"
+            echo "RESOLVED_WORKER_NAME=${resolved_worker_name}"
+          } >> "${GITHUB_ENV}"
+
+          {
+            echo "profile_name=${resolved_profile_name}"
+            echo "worker_prefix=${WORKER_PREFIX}"
+            echo "worker_name=${resolved_worker_name}"
+            echo "schedule_model=${resolved_schedule_model}"
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "::notice::準備以 Environment ${{ inputs.target_environment }} 首次 bootstrap ${GITHUB_REPOSITORY}"
+
+      - name: Build bootstrap payload
+        id: payload
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg profileName "${RESOLVED_PROFILE_NAME}" \
+            --arg profilePersonality "${RESOLVED_PROFILE_PERSONALITY}" \
+            --arg githubOwner "${REPO_OWNER}" \
+            --arg repoName "${REPO_NAME}" \
+            --arg githubToken "${GH_ISSUES_TOKEN}" \
+            --arg githubWebhookSecret "${GH_WEBHOOK_SECRET}" \
+            --arg workerPrefix "${WORKER_PREFIX}" \
+            --arg cfAccountId "${CLOUDFLARE_ACCOUNT_ID}" \
+            --arg cfApiToken "${CLOUDFLARE_API_TOKEN}" \
+            --arg telegramToken "${TELEGRAM_BOT_TOKEN}" \
+            --arg telegramChatId "${TELEGRAM_CHAT_ID}" \
+            --arg telegramWebhookSecret "${TELEGRAM_WEBHOOK_SECRET}" \
+            --arg geminiApiKey "${GEMINI_API_KEY:-}" \
+            --arg clawBrainProvider "${CLAWBRAIN_PROVIDER:-}" \
+            --arg clawBrainModel "${CLAWBRAIN_MODEL:-}" \
+            --arg clawBrainApiKey "${CLAWBRAIN_API_KEY:-}" \
+            --arg scheduleTimeUnderstandingModel "${RESOLVED_SCHEDULE_MODEL}" \
+            --arg feloApiKey "${FELO_API_KEY:-}" \
+            '{
+              profile: {
+                name: $profileName,
+                personality: $profilePersonality
+              },
+              github: {
+                id: $githubOwner,
+                repoName: $repoName,
+                pat: $githubToken,
+                autoCreateRepo: false,
+                webhookSecret: $githubWebhookSecret
+              },
+              cloudflare: {
+                name: $workerPrefix,
+                accountId: $cfAccountId,
+                apiKey: $cfApiToken
+              },
+              telegram: {
+                token: $telegramToken,
+                chatId: $telegramChatId,
+                webhookSecret: $telegramWebhookSecret
+              },
+              aiProvider: (
+                if $geminiApiKey == "" then
+                  null
+                else
+                  {
+                    provider: "gemini",
+                    endpoint: "",
+                    modelName: "",
+                    apiKey: $geminiApiKey
+                  }
+                end
+              ),
+              aiAgent: null,
+              feloApiKey: (if $feloApiKey == "" then null else $feloApiKey end),
+              scheduleTimeUnderstanding: {
+                model: $scheduleTimeUnderstandingModel
+              },
+              clawBrain: (
+                if $clawBrainProvider == "" and $clawBrainModel == "" and $clawBrainApiKey == "" then
+                  null
+                else
+                  {
+                    provider: $clawBrainProvider,
+                    model: $clawBrainModel,
+                    apiKey: $clawBrainApiKey
+                  }
+                end
+              )
+            }' > /tmp/bootstrap-payload.json
+
+          jq '
+            .github.pat = "***" |
+            .github.webhookSecret = "***" |
+            .cloudflare.apiKey = "***" |
+            .telegram.token = "***" |
+            .telegram.webhookSecret = "***" |
+            .aiProvider = (
+              if .aiProvider == null then null
+              else (.aiProvider.apiKey = "***")
+              end
+            ) |
+            .clawBrain = (
+              if .clawBrain == null then null
+              else (.clawBrain.apiKey = "***")
+              end
+            ) |
+            .feloApiKey = (if .feloApiKey == null then null else "***" end)
+          ' /tmp/bootstrap-payload.json > /tmp/bootstrap-payload-redacted.json
+
+          echo "📦 Bootstrap payload（已遮罩）"
+          jq . /tmp/bootstrap-payload-redacted.json
+
+      - name: Run phased bootstrap
+        id: bootstrap
+        run: |
+          set -euo pipefail
+
+          capture_status_snapshot() {
+            local job_id="$1"
+            if [[ -z "${job_id}" ]]; then
+              return 0
+            fi
+
+            local snapshot_url="${BOOTSTRAP_URL}/api/bootstrap/status?jobId=${job_id}"
+            if curl -sS "${snapshot_url}" > /tmp/bootstrap-status.json; then
+              cp /tmp/bootstrap-status.json /tmp/bootstrap-response.json
+            fi
+          }
+
+          echo "🚀 呼叫 BootstrapWorker..."
+          start_status="$(curl -sS \
+            -o /tmp/bootstrap-response.json \
+            -w "%{http_code}" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            --data @/tmp/bootstrap-payload.json \
+            "${BOOTSTRAP_URL}/api/bootstrap/start")"
+
+          echo "start_http_status=${start_status}" >> "${GITHUB_OUTPUT}"
+          if [[ "${start_status}" != "200" ]]; then
+            echo "::error::Bootstrap start 回傳非 200 狀態碼: ${start_status}"
+            cat /tmp/bootstrap-response.json
+            exit 1
+          fi
+
+          job_id="$(jq -r '.jobId // empty' /tmp/bootstrap-response.json)"
+          if [[ -z "${job_id}" ]]; then
+            echo "::error::BootstrapWorker 未回傳 jobId"
+            cat /tmp/bootstrap-response.json
+            exit 1
+          fi
+
+          phase_limit="$(jq -r '.phaseCount // 6' /tmp/bootstrap-response.json)"
+          if ! [[ "${phase_limit}" =~ ^[0-9]+$ ]]; then
+            phase_limit=6
+          fi
+
+          max_iterations=$((phase_limit + 6))
+          iteration=0
+          continue_status='n/a'
+
+          while [[ "$(jq -r '.completed // false' /tmp/bootstrap-response.json)" != "true" ]]; do
+            iteration=$((iteration + 1))
+            if (( iteration > max_iterations )); then
+              echo "::error::Bootstrap phase loop exceeded ${max_iterations} attempts"
+              capture_status_snapshot "${job_id}"
+              break
+            fi
+
+            next_phase="$(jq -r '.nextPhase // empty' /tmp/bootstrap-response.json)"
+            if [[ -z "${next_phase}" || "${next_phase}" == "null" ]]; then
+              echo "::error::Bootstrap job 尚未完成，但缺少 nextPhase"
+              capture_status_snapshot "${job_id}"
+              break
+            fi
+
+            echo "⏭️ 繼續執行 phase: ${next_phase}"
+            jq -n --arg jobId "${job_id}" '{jobId: $jobId}' > /tmp/bootstrap-continue.json
+
+            continue_status="$(curl -sS \
+              -o /tmp/bootstrap-response.json \
+              -w "%{http_code}" \
+              -H "Content-Type: application/json" \
+              -X POST \
+              --data @/tmp/bootstrap-continue.json \
+              "${BOOTSTRAP_URL}/api/bootstrap/continue")"
+
+            if [[ "${continue_status}" != "200" ]]; then
+              echo "::error::Bootstrap continue 回傳非 200 狀態碼: ${continue_status}"
+              capture_status_snapshot "${job_id}"
+              break
+            fi
+          done
+
+          jq -r '.logs[]?' /tmp/bootstrap-response.json > /tmp/bootstrap-logs.txt
+
+          ready="$(jq -r '.ready // false' /tmp/bootstrap-response.json)"
+          completed="$(jq -r '.completed // false' /tmp/bootstrap-response.json)"
+          result_success="$(jq -r '.result.success // false' /tmp/bootstrap-response.json)"
+          final_status="$(jq -r '.status // unknown' /tmp/bootstrap-response.json)"
+          last_phase="$(jq -r '.lastPhase // ""' /tmp/bootstrap-response.json)"
+          initial_issue="$(jq -r '.result.initialIssue // ""' /tmp/bootstrap-response.json)"
+          worker_url="$(jq -r '.result.urls.worker // ""' /tmp/bootstrap-response.json)"
+          github_webhook_url="$(jq -r '.result.urls.github // ""' /tmp/bootstrap-response.json)"
+          telegram_webhook_url="$(jq -r '.result.urls.telegram // ""' /tmp/bootstrap-response.json)"
+          manifest_url="$(jq -r '.result.githubApps.github.manifestUrl // ""' /tmp/bootstrap-response.json)"
+          install_owner="$(jq -r '.result.githubApps.github.installTarget.owner // ""' /tmp/bootstrap-response.json)"
+          install_repo="$(jq -r '.result.githubApps.github.installTarget.repo // ""' /tmp/bootstrap-response.json)"
+
+          {
+            echo "job_id=${job_id}"
+            echo "continue_http_status=${continue_status}"
+            echo "ready=${ready}"
+            echo "completed=${completed}"
+            echo "result_success=${result_success}"
+            echo "final_status=${final_status}"
+            echo "last_phase=${last_phase}"
+            echo "initial_issue=${initial_issue}"
+            echo "worker_url=${worker_url}"
+            echo "github_webhook_url=${github_webhook_url}"
+            echo "telegram_webhook_url=${telegram_webhook_url}"
+            echo "manifest_url=${manifest_url}"
+            echo "install_owner=${install_owner}"
+            echo "install_repo=${install_repo}"
+          } >> "${GITHUB_OUTPUT}"
+
+          if [[ "${ready}" != "true" || "${completed}" != "true" || "${result_success}" != "true" ]]; then
+            echo "::error::BootstrapWorker 未成功完成 phased bootstrap"
+            jq . /tmp/bootstrap-response.json
+            exit 1
+          fi
+
+      - name: Ensure fixed cron trigger
+        if: success()
+        run: |
+          set -euo pipefail
+
+          npm install --global wrangler@4.74.0
+          wrangler triggers deploy \
+            --name "${RESOLVED_WORKER_NAME}" \
+            --schedule "${GITHUB_CLAW_FIXED_CRON}"
+
+      - name: Update stored bootstrap version
+        if: success()
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GH_ISSUES_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          response="$(curl -sS "${BOOTSTRAP_URL}/api/worker-source" || true)"
+          version="$(echo "${response}" | jq -r '.metadata.version // empty')"
+
+          if [[ -z "${version}" ]]; then
+            echo "⚠️ 無法從 BootstrapWorker 取得版號，略過 BOOTSTRAP_VERSION 更新"
+            exit 0
+          fi
+
+          gh variable set BOOTSTRAP_VERSION \
+            --body "${version}" \
+            --repo "${GITHUB_REPOSITORY}"
+
+          echo "bootstrap_version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish summary
+        if: always()
+        env:
+          SELECTED_ENVIRONMENT: ${{ inputs.target_environment }}
+          START_HTTP_STATUS: ${{ steps.bootstrap.outputs.start_http_status }}
+          CONTINUE_HTTP_STATUS: ${{ steps.bootstrap.outputs.continue_http_status }}
+          FINAL_STATUS: ${{ steps.bootstrap.outputs.final_status }}
+          JOB_ID: ${{ steps.bootstrap.outputs.job_id }}
+          LAST_PHASE: ${{ steps.bootstrap.outputs.last_phase }}
+          INITIAL_ISSUE: ${{ steps.bootstrap.outputs.initial_issue }}
+          WORKER_URL: ${{ steps.bootstrap.outputs.worker_url }}
+          GITHUB_WEBHOOK_URL: ${{ steps.bootstrap.outputs.github_webhook_url }}
+          TELEGRAM_WEBHOOK_URL: ${{ steps.bootstrap.outputs.telegram_webhook_url }}
+          MANIFEST_URL: ${{ steps.bootstrap.outputs.manifest_url }}
+          INSTALL_OWNER: ${{ steps.bootstrap.outputs.install_owner }}
+          INSTALL_REPO: ${{ steps.bootstrap.outputs.install_repo }}
+          BOOTSTRAP_VERSION: ${{ steps.version.outputs.bootstrap_version }}
+          PROFILE_NAME_RESOLVED: ${{ steps.config.outputs.profile_name }}
+          WORKER_PREFIX_RESOLVED: ${{ steps.config.outputs.worker_prefix }}
+          WORKER_NAME_RESOLVED: ${{ steps.config.outputs.worker_name }}
+        run: |
+          {
+            echo "### 🦞 Environment bootstrap 結果"
+            echo
+            echo "| 項目 | 值 |"
+            echo "| --- | --- |"
+            echo "| Repository | \`${GITHUB_REPOSITORY}\` |"
+            echo "| Environment | \`${SELECTED_ENVIRONMENT}\` |"
+            echo "| Bootstrap URL | ${BOOTSTRAP_URL} |"
+            echo "| Bootstrap Job ID | \`${JOB_ID:-n/a}\` |"
+            echo "| Start HTTP Status | \`${START_HTTP_STATUS:-n/a}\` |"
+            echo "| Continue HTTP Status | \`${CONTINUE_HTTP_STATUS:-n/a}\` |"
+            echo "| Final Status | \`${FINAL_STATUS:-n/a}\` |"
+            echo "| Last Phase | \`${LAST_PHASE:-n/a}\` |"
+            echo "| Profile | \`${PROFILE_NAME_RESOLVED:-n/a}\` |"
+            echo "| Worker Prefix | \`${WORKER_PREFIX_RESOLVED:-n/a}\` |"
+            echo "| Worker Name | \`${WORKER_NAME_RESOLVED:-n/a}\` |"
+            echo "| Worker URL | ${WORKER_URL:-n/a} |"
+            echo "| GitHub Webhook URL | ${GITHUB_WEBHOOK_URL:-n/a} |"
+            echo "| Telegram Webhook URL | ${TELEGRAM_WEBHOOK_URL:-n/a} |"
+            echo "| Initial Issue | \`${INITIAL_ISSUE:-n/a}\` |"
+            echo "| Bootstrap Version | \`${BOOTSTRAP_VERSION:-unknown}\` |"
+            echo "| Fixed Cron | \`${GITHUB_CLAW_FIXED_CRON}\` |"
+            echo
+            echo "> 此 workflow 會從選定的 GitHub Environment 讀取 bootstrap secrets / vars。GitHub App 建立 / 安裝在 v1 仍需人工完成，建立 App 時請使用 repository secret \`GH_WEBHOOK_SECRET\` 作為 webhook secret。"
+            echo
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [[ -n "${MANIFEST_URL:-}" ]]; then
+            {
+              echo "#### GitHub App manifest"
+              echo
+              echo "- Manifest URL: ${MANIFEST_URL}"
+              echo "- Install target: \`${INSTALL_OWNER:-unknown}/${INSTALL_REPO:-unknown}\`"
+              echo
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+          if [[ -f /tmp/bootstrap-response.json ]]; then
+            warnings="$(jq -r '.result.warnings[]?' /tmp/bootstrap-response.json || true)"
+            errors="$(jq -r '.result.errors[]?' /tmp/bootstrap-response.json || true)"
+
+            if [[ -n "${warnings}" ]]; then
+              {
+                echo "#### Warnings"
+                echo
+                while IFS= read -r line; do
+                  [[ -n "${line}" ]] && echo "- ${line}"
+                done <<< "${warnings}"
+                echo
+              } >> "${GITHUB_STEP_SUMMARY}"
+            fi
+
+            if [[ -n "${errors}" ]]; then
+              {
+                echo "#### Errors"
+                echo
+                while IFS= read -r line; do
+                  [[ -n "${line}" ]] && echo "- ${line}"
+                done <<< "${errors}"
+                echo
+              } >> "${GITHUB_STEP_SUMMARY}"
+            fi
+          fi
+
+          {
+            echo "#### Bootstrap logs"
+            echo
+            if [[ -f /tmp/bootstrap-logs.txt ]]; then
+              echo '```text'
+              cat /tmp/bootstrap-logs.txt
+              echo '```'
+            else
+              echo "沒有可用的 bootstrap logs。"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"

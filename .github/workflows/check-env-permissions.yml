@@ -1,9 +1,9 @@
-name: 環境變數權限檢測
+name: 小龍蝦環境變數檢測
 
 on:
   workflow_dispatch:
 
-run-name: "🔍 環境變數權限檢測: ${{ github.repository }}"
+run-name: "🔍 小龍蝦環境變數檢測: ${{ github.repository }}"
 
 concurrency:
   group: check-env-permissions-${{ github.repository }}
@@ -13,7 +13,7 @@ permissions: {}
 
 jobs:
   check-env-permissions:
-    name: 環境變數權限檢測
+    name: 小龍蝦環境變數檢測
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -200,10 +200,19 @@ jobs:
           RESPONSE=$(curl -sS \
             -H "Authorization: Bearer ${GH_ISSUES_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
+            -w "%{http_code}" \
+            -o /tmp/gh-issues-response.json \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=1")
-          MSG=$(echo "$RESPONSE" | jq -r '.message // empty')
-          if echo "$MSG" | grep -qiE "Not Found|Resource not accessible|Bad credentials|Must have push access"; then
-            echo "::error::GH_ISSUES_TOKEN 沒有 Issues 讀取權限: ${MSG}"
+          HTTP_STATUS=$(echo "$RESPONSE")
+          if [[ -z "$HTTP_STATUS" || "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
+            MSG=$(cat /tmp/gh-issues-response.json | jq -r 'if type=="object" and has("message") then .message else empty end' 2>/dev/null || true)
+            echo "::error::GH_ISSUES_TOKEN 讀取 Issues 失敗（HTTP ${HTTP_STATUS}）: ${MSG}"
+            cat /tmp/gh-issues-response.json 2>/dev/null | head -n 5 || true
+            exit 1
+          fi
+          MSG=$(cat /tmp/gh-issues-response.json | jq -r 'if type=="object" and has("message") then .message else empty end' 2>/dev/null || true)
+          if [[ -n "$MSG" ]]; then
+            echo "::error::GH_ISSUES_TOKEN 讀取 Issues 回傳異常訊息: ${MSG}"
             exit 1
           fi
           echo "✅ GH_ISSUES_TOKEN 具有 Issues 讀取權限"
@@ -601,10 +610,23 @@ jobs:
           fi
           RESPONSE=$(curl -sS \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -w "%{http_code}" \
+            -o /tmp/cf-worker-response.json \
             "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}")
-          SUCCESS=$(echo "$RESPONSE" | jq -r '.success // false')
+          HTTP_STATUS=$(echo "$RESPONSE")
+          if ! echo "$HTTP_STATUS" | grep -Eq '^[0-9]+$'; then
+            echo "::error::Cloudflare Workers API 回應無法取得 HTTP 狀態（原始輸出: ${HTTP_STATUS}）"
+            exit 1
+          fi
+          if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
+            ERRORS=$(cat /tmp/cf-worker-response.json | jq -c 'if type=="object" and has("errors") then .errors else [] end' 2>/dev/null || echo "[]")
+            echo "::error::Worker '${WORKER_NAME}' 在 Cloudflare 不存在或無法存取（HTTP ${HTTP_STATUS}）: ${ERRORS}"
+            cat /tmp/cf-worker-response.json 2>/dev/null | head -n 5 || true
+            exit 1
+          fi
+          SUCCESS=$(cat /tmp/cf-worker-response.json | jq -r 'if type=="object" and has("success") then .success else false end' 2>/dev/null || echo "false")
           if [[ "$SUCCESS" != "true" ]]; then
-            echo "::error::Worker '${WORKER_NAME}' 在 Cloudflare 不存在或無法存取: $(echo "$RESPONSE" | jq -c '.errors // []')"
+            echo "::error::Worker '${WORKER_NAME}' 在 Cloudflare 不存在或無法存取: $(cat /tmp/cf-worker-response.json | jq -c 'if type=="object" and has("errors") then .errors else [] end' 2>/dev/null || echo "[]")"
             exit 1
           fi
           echo "✅ Worker '${WORKER_NAME}' 在 Cloudflare 帳號中存在"
@@ -854,7 +876,7 @@ jobs:
           done
 
           {
-            echo "### 🔍 環境變數權限檢測結果"
+            echo "### 🔍 小龍蝦環境變數檢測結果"
             echo ""
             echo "> Repository: \`${GITHUB_REPOSITORY}\`　|　執行時間: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             echo ""

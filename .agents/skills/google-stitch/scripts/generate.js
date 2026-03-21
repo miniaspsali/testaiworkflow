@@ -3,7 +3,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import tool from "../../../../.github/scripts/tools/google-stitch.mjs";
+import tool from "./google-stitch.js";
 
 const DEFAULT_OUTPUT_DIR = "google-stitch-output";
 

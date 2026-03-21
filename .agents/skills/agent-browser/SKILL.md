@@ -4,6 +4,31 @@ description: Browser automation CLI for AI agents. Use when the user needs to in
 allowed-tools: Bash(npx agent-browser:*), Bash(agent-browser:*)
 ---
 
+## Prerequisites / Environment Setup
+
+Before running any `agent-browser` commands, verify that the execution environment is ready — specifically that the `agent-browser` CLI is installed and a Chrome/Chromium browser is available.
+
+If the environment is not ready, run `install.sh` located in the same directory as this `SKILL.md`:
+
+```bash
+sh "$(dirname "$0")/install.sh"
+```
+
+`install.sh` does the following:
+
+1. **Installs `agent-browser`** via npm (`npm i -g agent-browser`) if the command is not already present.
+2. **Detects a Chrome/Chromium binary** on the system and sets the `AGENT_BROWSER_EXECUTABLE_PATH` environment variable accordingly.
+3. **Falls back to `agent-browser install`** to download a bundled Chromium if no system browser is found.
+
+**Quick check** — add this guard before invoking any `agent-browser` command in a script:
+
+```bash
+# Check if agent-browser is available
+if ! command -v agent-browser >/dev/null 2>&1; then
+  sh "$(dirname "$0")/install.sh"
+fi
+```
+
 # Browser Automation with agent-browser
 
 The CLI uses Chrome/Chromium via CDP directly. Install via `npm i -g agent-browser`, `brew install agent-browser`, or `cargo install agent-browser`. Run `agent-browser install` to download Chrome. Run `agent-browser upgrade` to update to the latest version.

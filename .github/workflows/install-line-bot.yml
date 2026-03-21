@@ -36,7 +36,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BOOTSTRAP_LINE_WORKER_SOURCE_URL: https://claw-bootstrap.kgerickg.workers.dev/api/worker-source?worker=LineWorker
+  BOOTSTRAP_LINE_WORKER_SOURCE_URL: https://claw-bootstrap.duotify.com/api/worker-source?worker=LineWorker
 
 jobs:
   deploy:

@@ -61,6 +61,7 @@ env:
 
   GEMINI_API_KEY: "${{ secrets.GEMINI_API_KEY }}"
   TAVILY_API_KEY: "${{ secrets.TAVILY_API_KEY }}"
+  FELO_API_KEY: "${{ secrets.FELO_API_KEY }}"
 
 jobs:
   # 單一主 job：在 GitHub-hosted runner 上完成驗證、執行 agent、寫回結果。
@@ -139,42 +140,7 @@ jobs:
             curl -fsSL https://gh.io/copilot-install | VERSION=v1.0.9 bash
           fi
 
-          if ! command -v wrangler >/dev/null 2>&1; then
-            npm install --global wrangler
-          fi
-
-          if ! command -v summarize >/dev/null 2>&1; then
-            npm install --global @steipete/summarize
-          fi
-
-          if ! command -v tvly >/dev/null 2>&1; then
-            python3 -m pip install --user --upgrade tavily-cli
-          fi
-
-          if ! command -v agent-browser >/dev/null 2>&1; then
-            npm install --global agent-browser
-          fi
-
-          browser_path=""
-          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              browser_path="$(command -v "$candidate")"
-              break
-            fi
-          done
-
-          if [ -n "$browser_path" ]; then
-            printf 'AGENT_BROWSER_EXECUTABLE_PATH=%s\n' "$browser_path" >> "$GITHUB_ENV"
-            export AGENT_BROWSER_EXECUTABLE_PATH="$browser_path"
-          else
-            agent-browser install
-          fi
-
           copilot --version
-          wrangler --version
-          summarize --version
-          tvly --version
-          agent-browser --version
 
       # 若上游已提供 progress comment id 就直接沿用；否則新建一則留言當作整個流程的狀態面板。
       - name: Resolve progress comment
@@ -357,25 +323,17 @@ jobs:
             cd "${ISSUE_DIR}"
             prompt="$(cat issue.md)"
             # 以 workflow 既有旗標呼叫 copilot CLI，並把 JSON 輸出同步寫進 log 檔。
-            copilot -p "${prompt}" --yolo --no-auto-update --config-dir .copilot --add-dir ../../.github/scripts --add-dir ../../.memory --add-dir ../../.agents --output-format json --stream off \
+            copilot -p "${prompt}" --yolo --no-auto-update --config-dir .copilot --add-dir ../../.github/scripts --add-dir ../../.github/hooks --add-dir ../../.memory --add-dir ../../.agents --output-format json --stream off \
               | tee "$(basename "${LOG_FILE}")" \
               | jq
           )
           status=${PIPESTATUS[0]}
           set -e
 
-          # 從 copilot JSON 日誌裡抽出最後一段文字內容，當成要回貼到 issue 的結果。
-          # 優先順序：
-          #   1. session.error → 抽出 data.message（代表 CLI 層級錯誤）
-          #   2. 最後一筆「無 toolRequests」的 assistant.message → 抽出 data.content（AI 最終回覆）
-          #   3. 最後一筆 assistant.message 的 data.content（含 tool call 的中間訊息，作為 fallback）
+          # 從 copilot JSON 日誌裡抽出最終可回貼內容。
+          # 優先順序：session.error -> final_answer -> 最後一筆有內容的 assistant.message。
           if [[ -f "${LOG_FILE}" ]]; then
-            jq -s -r '
-              (map(select(.type == "session.error")) | last | .data.message // empty)
-              // (map(select(.type == "assistant.message" and ((.data.toolRequests // []) | length == 0) and (.data.content // "" | length > 0))) | last | .data.content // empty)
-              // (map(select(.type == "assistant.message" and (.data.content // "" | length > 0))) | last | .data.content // empty)
-              // ""
-            ' "${LOG_FILE}" > "${RESULT_FILE}"
+            node .github/scripts/extract-copilot-result.mjs "${LOG_FILE}" > "${RESULT_FILE}"
           else
             : > "${RESULT_FILE}"
           fi
@@ -448,6 +406,7 @@ jobs:
           RESULT_FILE: ${{ steps.workspace.outputs.result_file }}
         run: |
           set -euo pipefail
+          sleep 5
           body_file="${RUNNER_TEMP}/comment-body-final.json"
 
           gh_api_with_retry() {

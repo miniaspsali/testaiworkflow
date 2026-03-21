@@ -15,7 +15,7 @@ description: Use this skill when users want to generate UI mockups, landing page
 
 - `GEMINI_API_KEY` 或 `GOOGLE_API_KEY`
 - Node.js `>=20.0.0`
-- repo 內已存在 `.github/scripts/tools/google-stitch.mjs`
+- repo 內已存在 `.github/scripts/google-stitch.mjs`
 
 ## 使用方式
 
