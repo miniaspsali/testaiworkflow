@@ -222,19 +222,7 @@ jobs:
                   chatId: $telegramChatId,
                   webhookSecret: $telegramWebhookSecret
                 },
-                aiProvider: (
-                  if $geminiApiKey == "" then
-                    null
-                  else
-                    {
-                      provider: "gemini",
-                      endpoint: "",
-                      modelName: "",
-                      apiKey: $geminiApiKey
-                    }
-                  end
-                ),
-                aiAgent: null,
+                geminiApiKey: (if $geminiApiKey == "" then null else $geminiApiKey end),
                 feloApiKey: (if $feloApiKey == "" then null else $feloApiKey end),
                 scheduleTimeUnderstanding: {
                   model: $scheduleTimeUnderstandingModel
