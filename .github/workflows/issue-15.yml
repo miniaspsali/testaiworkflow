@@ -53,7 +53,7 @@ env:
   AUTOMATION_GIT_USER_NAME: "${{ vars['AUTOMATION_GIT_USER_NAME'] || 'github-actions[bot]' }}"
   AUTOMATION_GIT_USER_EMAIL: "${{ vars['AUTOMATION_GIT_USER_EMAIL'] || 'github-actions[bot]@users.noreply.github.com' }}"
   # 給 copilot CLI 做 GitHub 驗證用的 token；實際權限要看 repo secrets 如何配置。
-  COPILOT_GITHUB_TOKEN: "${{ secrets.GH_CODESPACE_TOKEN || secrets.GH_ISSUES_TOKEN }}"
+  COPILOT_GITHUB_TOKEN: "${{ secrets.COPILOT_GITHUB_TOKEN || secrets.GH_CODESPACE_TOKEN || secrets.GH_ISSUES_TOKEN }}"
 
   CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}"
 
@@ -542,6 +542,22 @@ jobs:
           if [ "$push_succeeded" != "true" ]; then
             echo "::error::Failed to push after 3 attempts."
             exit 1
+          fi
+
+      - name: Rewrite image URLs in result
+        if: success() && steps.workspace.outcome == 'success'
+        shell: bash
+        env:
+          RESULT_FILE: ${{ steps.workspace.outputs.result_file }}
+          BRANCH_NAME: ${{ steps.workspace.outputs.branch_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ -s "${RESULT_FILE}" ]]; then
+            node .github/scripts/rewrite-image-urls.mjs \
+              "${RESULT_FILE}" \
+              "${GITHUB_REPOSITORY}" \
+              "${BRANCH_NAME}"
           fi
 
       # 成功時，把最終結果直接貼回進度留言，讓 issue 頁面就是最終輸出入口。
