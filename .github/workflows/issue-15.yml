@@ -303,6 +303,12 @@ jobs:
           RESULT_FILE: ${{ steps.workspace.outputs.result_file }}
           LOG_FILE: ${{ steps.workspace.outputs.log_file }}
           AGENT_BROWSER_STATE: "auth.json"
+          # 明確將 API keys 傳入此 step，確保 copilot CLI 及其子行程都能取得。
+          # 雖然 workflow 層級 env 理論上應可繼承，但明確宣告可避免 copilot CLI 沙箱隔離造成的問題。
+          GEMINI_API_KEY: ${{ env.GEMINI_API_KEY }}
+          NANOBANANA_GEMINI_API_KEY: ${{ env.GEMINI_API_KEY }}
+          FELO_API_KEY: ${{ env.FELO_API_KEY }}
+          TAVILY_API_KEY: ${{ env.TAVILY_API_KEY }}
         run: |
           set -euo pipefail
 
