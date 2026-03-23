@@ -47,7 +47,9 @@ description: Use this skill when users ask to generate, edit, or compose images 
 
 ## Execution pattern
 - Default to Node.js wrapper flows for regular usage, especially when payload control is needed.
-- Quick path:
-  - `node .agents/skills/nanobanana-2-image-generation/scripts/nanobanana-cli.js --prompt "..."`
+- Quick path (agent runs from `workspaces/issue-N/`; resolve the repo root first):
+  - `REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "../..")` then
+    `node "$REPO_ROOT/.agents/skills/nanobanana-2-image-generation/scripts/nanobanana-cli.js" --prompt "..."`
   - Add references via repeated `-i/--image` (up to 14).
   - Enable grounding via `--google-search` when prompt needs fresh web context.
+- The API key (`GEMINI_API_KEY` / `NANOBANANA_GEMINI_API_KEY`) is injected by the workflow environment; do **not** hardcode it. The CLI reads it automatically from the environment.

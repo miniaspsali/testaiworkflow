@@ -608,28 +608,33 @@ jobs:
             echo "::warning::WORKER_NAME / CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID 未完整設定，跳過 Worker 存在驗證"
             exit 0
           fi
-          RESPONSE=$(curl -sS \
+          HTTP_STATUS=$(curl -sS \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             -w "%{http_code}" \
-            -o /tmp/cf-worker-response.json \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}")
-          HTTP_STATUS=$(echo "$RESPONSE")
+            -o /tmp/cf-workers-list-response.json \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts")
           if ! echo "$HTTP_STATUS" | grep -Eq '^[0-9]+$'; then
             echo "::error::Cloudflare Workers API 回應無法取得 HTTP 狀態（原始輸出: ${HTTP_STATUS}）"
             exit 1
           fi
           if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
-            ERRORS=$(cat /tmp/cf-worker-response.json | jq -c 'if type=="object" and has("errors") then .errors else [] end' 2>/dev/null || echo "[]")
-            echo "::error::Worker '${WORKER_NAME}' 在 Cloudflare 不存在或無法存取（HTTP ${HTTP_STATUS}）: ${ERRORS}"
-            cat /tmp/cf-worker-response.json 2>/dev/null | head -n 5 || true
+            ERRORS=$(jq -c 'if type=="object" and has("errors") then .errors else [] end' /tmp/cf-workers-list-response.json 2>/dev/null || echo "[]")
+            echo "::error::無法列出 Cloudflare Workers（HTTP ${HTTP_STATUS}）: ${ERRORS}"
             exit 1
           fi
-          SUCCESS=$(cat /tmp/cf-worker-response.json | jq -r 'if type=="object" and has("success") then .success else false end' 2>/dev/null || echo "false")
+          SUCCESS=$(jq -r 'if type=="object" and has("success") then .success else false end' /tmp/cf-workers-list-response.json 2>/dev/null || echo "false")
           if [[ "$SUCCESS" != "true" ]]; then
-            echo "::error::Worker '${WORKER_NAME}' 在 Cloudflare 不存在或無法存取: $(cat /tmp/cf-worker-response.json | jq -c 'if type=="object" and has("errors") then .errors else [] end' 2>/dev/null || echo "[]")"
+            ERRORS=$(jq -c 'if type=="object" and has("errors") then .errors else [] end' /tmp/cf-workers-list-response.json 2>/dev/null || echo "[]")
+            echo "::error::無法列出 Cloudflare Workers（API 回應 success!=true）: ${ERRORS}"
             exit 1
           fi
-          echo "✅ Worker '${WORKER_NAME}' 在 Cloudflare 帳號中存在"
+          MATCHED_NAME=$(jq -r --arg workerName "$WORKER_NAME" '.result[]? | select(.id == $workerName) | .id' /tmp/cf-workers-list-response.json 2>/dev/null | head -n 1)
+          if [[ -z "$MATCHED_NAME" ]]; then
+            ALL_WORKERS=$(jq -r '[.result[]?.id] | join(", ")' /tmp/cf-workers-list-response.json 2>/dev/null || echo "(無法解析)")
+            echo "::error::找不到 Worker '${WORKER_NAME}'（帳號中現有: ${ALL_WORKERS}）"
+            exit 1
+          fi
+          echo "✅ Worker '${MATCHED_NAME}' 在 Cloudflare 帳號中存在"
 
       # ══════════════════════════════════════════════════════════════════════
       # WORKERS_SUBDOMAIN（Repository Variable）
