@@ -1,0 +1,43 @@
+{
+  "generatedAt": "2026-03-24T20:37:53.506Z",
+  "repository": "miniaspsali/testaiworkflow",
+  "issue": {
+    "number": 6,
+    "title": "網頁設計",
+    "url": "https://github.com/miniaspsali/testaiworkflow/issues/6",
+    "state": "open",
+    "author": "miniaspsali",
+    "labels": [
+      "chat-session"
+    ],
+    "assignees": [],
+    "participants": [
+      "miniaspsali"
+    ],
+    "commentCount": 0,
+    "updatedAt": "2026-03-19T23:01:16.000Z"
+  },
+  "summary": {
+    "status": "Issue 仍在推進中，保留 2 個 active tasks。",
+    "recentActivity": [
+      "最近沒有新的留言活動。"
+    ],
+    "decisions": [
+      "目前沒有明確決策。"
+    ],
+    "completedWork": [
+      "目前沒有可確認的已完成工作。"
+    ],
+    "openTasks": [
+      "\"description\": \"幫我生成設計圖我要做一個台灣美食網站，請幫我生成一個簡單的設計圖，包含首頁、菜單頁和聯絡我們頁面。\"",
+      "幫我生成設計圖我要做一個台灣美食網站，請幫我生成一個簡單的設計圖，包含首頁、菜單頁和聯絡我們頁面。"
+    ],
+    "preferences": [
+      "目前沒有可確認的偏好設定。"
+    ],
+    "openLoops": [
+      "\"description\": \"幫我生成設計圖我要做一個台灣美食網站，請幫我生成一個簡單的設計圖，包含首頁、菜單頁和聯絡我們頁面。\"",
+      "幫我生成設計圖我要做一個台灣美食網站，請幫我生成一個簡單的設計圖，包含首頁、菜單頁和聯絡我們頁面。"
+    ]
+  }
+}

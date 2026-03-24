@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-03-24T20:37:53.506Z",
+  "repository": "miniaspsali/testaiworkflow",
+  "issue": {
+    "number": 12,
+    "title": "test Claude Sonnet 4.6 model",
+    "url": "https://github.com/miniaspsali/testaiworkflow/issues/12",
+    "state": "open",
+    "author": "miniaspsali",
+    "labels": [
+      "chat-session"
+    ],
+    "assignees": [],
+    "participants": [
+      "miniaspsali"
+    ],
+    "commentCount": 0,
+    "updatedAt": "2026-03-20T03:57:37.000Z"
+  },
+  "summary": {
+    "status": "{   \"status\": \"阻塞 - Issue 仍為 open，但因 Claude Sonnet 4.6 API 配額不足 (402 錯誤) 暫時無法繼續測試。\",   \"recentActivity\": [     \"龍蝦協助主人以 JSON 格式記錄 3/19 晚餐 500 元的支出。\",     \"嘗試呼叫 Claude Sonnet 4.6 進…",
+    "recentActivity": [
+      "沒有足夠資訊可整理近期活動。"
+    ],
+    "decisions": [
+      "目前沒有明確決策。"
+    ],
+    "completedWork": [
+      "目前沒有可確認的已完成工作。"
+    ],
+    "openTasks": [
+      "目前沒有可確認的待辦，或資訊不足。"
+    ],
+    "preferences": [
+      "目前沒有可確認的偏好設定。"
+    ],
+    "openLoops": [
+      "目前沒有可確認的未解議題。"
+    ]
+  }
+}

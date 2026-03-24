@@ -1,0 +1,107 @@
+{
+  "generatedAt": "2026-03-24T20:37:53.506Z",
+  "window": {
+    "repository": "miniaspsali/testaiworkflow",
+    "issueState": "all",
+    "issueLimit": 100,
+    "sinceDays": 30
+  },
+  "counts": {
+    "consideredIssues": 9,
+    "openIssues": 9,
+    "closedIssues": 0
+  },
+  "topLabels": [
+    {
+      "name": "chat-session",
+      "count": 7
+    }
+  ],
+  "agentFiles": [
+    {
+      "issueNumber": 15,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/15",
+      "title": "Issue #15",
+      "relativePath": "agents/issue-15.json"
+    },
+    {
+      "issueNumber": 14,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/14",
+      "title": "新聞記者",
+      "relativePath": "agents/issue-14.json"
+    },
+    {
+      "issueNumber": 13,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/13",
+      "title": "記帳小龍蝦 Claude Sonnet 4.6 Test2",
+      "relativePath": "agents/issue-13.json"
+    },
+    {
+      "issueNumber": 12,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/12",
+      "title": "test Claude Sonnet 4.6 model",
+      "relativePath": "agents/issue-12.json"
+    },
+    {
+      "issueNumber": 11,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/11",
+      "title": "UI 小龍蝦",
+      "relativePath": "agents/issue-11.json"
+    },
+    {
+      "issueNumber": 3,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/3",
+      "title": "Issue #3",
+      "relativePath": "agents/issue-3.json"
+    },
+    {
+      "issueNumber": 10,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/10",
+      "title": "記帳小龍蝦 GPT-5 mini",
+      "relativePath": "agents/issue-10.json"
+    },
+    {
+      "issueNumber": 4,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/4",
+      "title": "記帳小龍蝦",
+      "relativePath": "agents/issue-4.json"
+    },
+    {
+      "issueNumber": 6,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/6",
+      "title": "網頁設計",
+      "relativePath": "agents/issue-6.json"
+    }
+  ],
+  "sections": {
+    "agentActivity": [
+      "#15 Issue #15：目前尚未收到任何對話或指示，龍蝦保持待命狀態",
+      "#14 新聞記者：最近沒有新的留言活動。",
+      "#13 記帳小龍蝦 Claude Sonnet 4.6 Test2：沒有足夠資訊可整理近期活動。",
+      "#12 test Claude Sonnet 4.6 model：沒有足夠資訊可整理近期活動。",
+      "#11 UI 小龍蝦：沒有足夠資訊可整理近期活動。"
+    ],
+    "crossIssueThemes": [
+      "#15：目前沒有可確認的偏好設定。",
+      "#14：目前沒有可確認的偏好設定。",
+      "#13：目前沒有可確認的偏好設定。",
+      "#12：目前沒有可確認的偏好設定。",
+      "#11：目前沒有可確認的偏好設定。"
+    ],
+    "decisions": [
+      "#15：尚未確定任何決策，需待主人說明需求",
+      "#14：目前沒有明確決策。",
+      "#13：目前沒有明確決策。",
+      "#12：目前沒有明確決策。",
+      "#11：目前沒有明確決策。"
+    ],
+    "openLoops": [
+      "#15：等待主人提供具體需求或說明",
+      "#14：目前沒有可確認的未解議題。",
+      "#13：目前沒有可確認的未解議題。",
+      "#12：目前沒有可確認的未解議題。",
+      "#11：目前沒有可確認的未解議題。"
+    ]
+  },
+  "summarySource": "deterministic"
+}

@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-03-24T20:37:53.506Z",
+  "repository": "miniaspsali/testaiworkflow",
+  "issue": {
+    "number": 4,
+    "title": "記帳小龍蝦",
+    "url": "https://github.com/miniaspsali/testaiworkflow/issues/4",
+    "state": "open",
+    "author": "miniaspsali",
+    "labels": [
+      "chat-session"
+    ],
+    "assignees": [],
+    "participants": [
+      "miniaspsali"
+    ],
+    "commentCount": 0,
+    "updatedAt": "2026-03-20T01:36:12.000Z"
+  },
+  "summary": {
+    "status": "Issue 仍在推進中，保留 5 個 active tasks。",
+    "recentActivity": [
+      "最近沒有新的留言活動。"
+    ],
+    "decisions": [
+      "看起來這是一個記帳應用，用戶通過 Telegram 提交消費記錄，系統應該將這些記錄保存。",
+      "現在我需要檢查應用的文件結構和架構，理解如何將這筆消費記錄（3/19 晚餐 NT$800）存儲到正確的位置。",
+      "將這筆新的消費記錄（3/20 晚餐 1000）添加到系統中"
+    ],
+    "completedWork": [
+      "目前沒有可確認的已完成工作。"
+    ],
+    "openTasks": [
+      "我需要遵循 CO-STAR 中定義的步驟：",
+      "看起來這是一個記帳應用，用戶通過 Telegram 提交消費記錄，系統應該將這些記錄保存。",
+      "用戶說「3/19 晚餐 NT$800」 - 這是一個記帳項目，我需要幫助系統處理這筆記錄。",
+      "現在我需要檢查應用的文件結構和架構，理解如何將這筆消費記錄（3/19 晚餐 NT$800）存儲到正確的位置。",
+      "我需要："
+    ],
+    "preferences": [
+      "目前沒有可確認的偏好設定。"
+    ],
+    "openLoops": [
+      "我需要遵循 CO-STAR 中定義的步驟：",
+      "看起來這是一個記帳應用，用戶通過 Telegram 提交消費記錄，系統應該將這些記錄保存。",
+      "用戶說「3/19 晚餐 NT$800」 - 這是一個記帳項目，我需要幫助系統處理這筆記錄。",
+      "現在我需要檢查應用的文件結構和架構，理解如何將這筆消費記錄（3/19 晚餐 NT$800）存儲到正確的位置。",
+      "我需要："
+    ]
+  }
+}

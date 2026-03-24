@@ -1,11 +1,31 @@
 # Repository Memory
 
-這份檔案是從 `daily/*.md` 蒸餾出來的長期 memory。
+## Stable Context
 
-尚未建立整理後的長期 context。
+- # Shared Memory Manual Notes
+- 這個檔案保留給人類手動維護的長期記憶。
+- 建議放這些內容：
+- 穩定規則
+- 長期決策
+- 常見限制
+- agent 共同遵守的 repo 習慣
+- 注意：
 
-請先產生 daily snapshots，再整理成這份 MEMORY.md：
+## Recent Themes
 
-- 觸發 `.github/workflows/compact-memory.yml`
-- 執行 `node .github/scripts/memory/compact-memory.mjs`
-- 執行 `node .github/scripts/memory/summarize-memory-context.mjs --memory-dir .memory --output .memory/MEMORY.md`
+- Daily Snapshot 2026-03-24：Date: 2026-03-24
+- Date: 2026-03-24
+- Generated at: 2026-03-24T20:37:53.506Z
+- Repository: miniaspsali/testaiworkflow
+- Issue state: all
+- Issue limit: 100
+- Since days: 30
+- Summary source: deterministic
+
+## Constraints
+
+- 常見限制
+
+## Open Loops
+
+- ## Open Loops

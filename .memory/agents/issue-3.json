@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-03-24T20:37:53.506Z",
+  "repository": "miniaspsali/testaiworkflow",
+  "issue": {
+    "number": 3,
+    "title": "Issue #3",
+    "url": "https://github.com/miniaspsali/testaiworkflow/issues/3",
+    "state": "open",
+    "author": "miniaspsali",
+    "labels": [],
+    "assignees": [],
+    "participants": [
+      "miniaspsali"
+    ],
+    "commentCount": 0,
+    "updatedAt": "2026-03-20T03:31:54.000Z"
+  },
+  "summary": {
+    "status": "資訊不明 - 目前缺乏具體描述與對話內容，無法判斷進度或阻塞情況。",
+    "recentActivity": [
+      "沒有足夠資訊可整理近期活動。"
+    ],
+    "decisions": [
+      "目前尚未有明確決策，需等待主人提供需求說明。"
+    ],
+    "completedWork": [
+      "目前沒有可確認的已完成工作。"
+    ],
+    "openTasks": [
+      "等待主人補充 Issue 內容與相關 Telegram 討論。"
+    ],
+    "preferences": [
+      "目前沒有可確認的偏好設定。"
+    ],
+    "openLoops": [
+      "等待主人補充 Issue 內容與相關 Telegram 討論。"
+    ]
+  }
+}

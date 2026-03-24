@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-03-24T20:37:53.506Z",
+  "repository": "miniaspsali/testaiworkflow",
+  "issue": {
+    "number": 11,
+    "title": "UI 小龍蝦",
+    "url": "https://github.com/miniaspsali/testaiworkflow/issues/11",
+    "state": "open",
+    "author": "miniaspsali",
+    "labels": [
+      "chat-session"
+    ],
+    "assignees": [],
+    "participants": [
+      "miniaspsali"
+    ],
+    "commentCount": 0,
+    "updatedAt": "2026-03-20T03:47:09.000Z"
+  },
+  "summary": {
+    "status": "{   \"status\": \"阻塞 - 目前因 API 配額不足無法產出 UI 原型，需先解決配額問題才能繼續\",   \"recentActivity\": [     \"龍蝦收到主人要求：產生台灣美食網站的 UI 原型、設計圖與 HTML，包含 Home、Menu、Contact 三個區塊\",     \"嘗試呼叫生成服務時回傳 402 配額不足的錯誤訊息\"…",
+    "recentActivity": [
+      "沒有足夠資訊可整理近期活動。"
+    ],
+    "decisions": [
+      "目前沒有明確決策。"
+    ],
+    "completedWork": [
+      "目前沒有可確認的已完成工作。"
+    ],
+    "openTasks": [
+      "目前沒有可確認的待辦，或資訊不足。"
+    ],
+    "preferences": [
+      "目前沒有可確認的偏好設定。"
+    ],
+    "openLoops": [
+      "目前沒有可確認的未解議題。"
+    ]
+  }
+}
