@@ -1,15 +1,23 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { parsePositiveInteger } from './cli-utils.mjs';
 import {
-  buildDailyPrompt,
-  buildIssueAgentPrompt,
-} from './memory-prompts.mjs';
+  appendInternalWarning,
+  createInternalWarning,
+  dedupeAndLimitItems,
+  extractSourceLines,
+  filterLinesByKeywords,
+  hasCompleteSummarySecrets,
+  normalizeWhitespace,
+  toSingleLine,
+  truncateText,
+} from './memory-utils.mjs';
+import { buildDailyPrompt, buildIssueAgentPrompt } from './memory-prompts.mjs';
 import {
   buildSummarySecrets,
   extractSummaryTextFromToolResult,
@@ -37,6 +45,64 @@ const ISSUE_AGENT_OMITTED_SECTIONS = ['Risks', 'Next Steps'];
 const ISSUE_AGENT_SECTION_RENAMES = new Map([
   ['Conversation Summary', 'Recent Activity'],
 ]);
+const ISSUE_AGENT_JSON_EMPTY_STATUS = '資訊不足，無法整理可保留的 agent 摘要。';
+const DETERMINISTIC_RECENT_COMMENT_LIMIT = 8;
+const DETERMINISTIC_LIST_LIMIT = 5;
+const DETERMINISTIC_ITEM_MAX_CHARS = 180;
+const DETERMINISTIC_STATUS_MAX_CHARS = 220;
+const DETERMINISTIC_DAILY_SECTION_ITEM_LIMIT = 8;
+const ISSUE_SUMMARY_KEYWORDS = Object.freeze({
+  activeTasks: [
+    'todo',
+    'to do',
+    'next',
+    'follow up',
+    '待辦',
+    '待处理',
+    '待處理',
+    '待確認',
+    '需要',
+    '應該',
+    '請',
+  ],
+  decisions: ['決定', '決議', '同意', 'adopt', 'agreed', '將', '會改', 'will'],
+  completed: ['完成', '已完成', 'done', 'fixed', 'merged', 'resolved', '上線'],
+  preferences: [
+    'prefer',
+    'preference',
+    '習慣',
+    '偏好',
+    '規則',
+    '限制',
+    '不要',
+    '務必',
+    'must',
+    'should',
+  ],
+  openLoops: [
+    'block',
+    'blocked',
+    'waiting',
+    'pending',
+    'unknown',
+    '待確認',
+    '待回覆',
+    '不確定',
+    '卡住',
+    '風險',
+  ],
+});
+const SUMMARY_TRANSIENT_ERROR_PATTERNS = [
+  /429/,
+  /rate[- ]?limit/i,
+  /quota/i,
+  /resource exhausted/i,
+  /timeout/i,
+  /timed out/i,
+  /etimedout/i,
+  /abort/i,
+  /overloaded/i,
+];
 
 function resolveSummaryProfile(summarySecrets) {
   return resolveSummaryExecutionProfile(summarySecrets);
@@ -63,20 +129,20 @@ const AGENTS_README_TEMPLATE = `# Agent Memory
 這個資料夾把每一個 GitHub issue 視為一個 agent。
 
 約定：
-- 每一個 issue 會整理成 \`issue-<number>.md\`
+- 每一個 issue 會整理成 \`issue-<number>.json\`
 - 每一份記憶都像是一隻龍蝦，持續替主人記住這個 agent 的角色、對話脈絡與工作進展
 - 內容是 AI 蒸餾後的 agent memory，不是原始對話逐字稿
 - 應優先保留近期活動、目前狀態、已完成工作與待辦，方便下一次接續陪主人工作
 
 資料來源：
-- GitHub issue body
-- GitHub issue comments
+- issue workspace 的 \`workspaces/issue-<number>/issue.md\`
+- 若找不到對應 \`issue.md\`，就略過該 issue
 - compact-memory workflow 每次整理視窗內的 issues 後更新這些檔案
 `;
 
 const ROOT_MEMORY_TEMPLATE = `# Repository Memory
 
-這份檔案是從 \`daily/*.md\` 蒸餾出來的長期 memory。
+這份檔案是從 \`daily/*.json\` 蒸餾出來的長期 memory。
 
 它代表整群龍蝦替主人保留的長期生活與工作記憶。
 
@@ -197,30 +263,31 @@ function formatTimestamp(value) {
   return new Date(value).toISOString();
 }
 
-function normalizeWhitespace(value) {
-  return String(value || '')
-    .replace(/\r\n/g, '\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+function extractUncheckedTaskItems(value) {
+  const text = String(value || '');
+  const matches = Array.from(text.matchAll(/^\s*[-*]\s+\[\s*\]\s+(.+?)\s*$/gm));
+
+  return matches.map((match) => String(match[1] || '').trim()).filter(Boolean);
 }
 
-function truncateText(value, maxLength) {
-  const normalized = String(value || '');
-  if (!normalized || normalized.length <= maxLength) {
-    return normalized;
-  }
+function extractCheckedTaskItems(value) {
+  const text = String(value || '');
+  const matches = Array.from(
+    text.matchAll(/^\s*[-*]\s+\[(?:x|X)\]\s+(.+?)\s*$/gm),
+  );
 
-  if (maxLength <= 1) {
-    return normalized.slice(0, maxLength);
-  }
+  return matches.map((match) => String(match[1] || '').trim()).filter(Boolean);
+}
 
-  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+function extractQuestionLikeLines(lines) {
+  return lines.filter((line) => /[?？]$/.test(line) || line.includes('？'));
 }
 
 function decodeBase64Utf8(value) {
-  return Buffer.from(String(value || '').replace(/\s+/g, ''), 'base64')
-    .toString('utf8');
+  return Buffer.from(
+    String(value || '').replace(/\s+/g, ''),
+    'base64',
+  ).toString('utf8');
 }
 
 function isMissingGitHubContentError(error) {
@@ -375,6 +442,227 @@ function normalizeIssueAgentSummaryMarkdown(summary) {
   return renamed || '## Status\n\n- 資訊不足，無法整理可保留的 agent 摘要。';
 }
 
+function normalizeIssueAgentSummaryItem(value) {
+  return truncateText(toSingleLine(value), DETERMINISTIC_ITEM_MAX_CHARS);
+}
+
+function normalizeIssueAgentSummaryList(values, fallbackText) {
+  const normalizedValues = Array.isArray(values)
+    ? values
+        .map((value) => normalizeIssueAgentSummaryItem(value))
+        .filter(Boolean)
+    : typeof values === 'string'
+      ? [normalizeIssueAgentSummaryItem(values)].filter(Boolean)
+      : [];
+
+  return dedupeAndLimitItems(normalizedValues, {
+    fallbackText,
+    maxItems: DETERMINISTIC_LIST_LIMIT,
+    maxItemChars: DETERMINISTIC_ITEM_MAX_CHARS,
+  });
+}
+
+function parseMarkdownSectionMap(markdown) {
+  const normalized = String(markdown || '').trim();
+  if (!normalized) {
+    return new Map();
+  }
+
+  const headings = [...normalized.matchAll(/^##\s+(.+?)\s*$/gm)];
+  if (headings.length === 0) {
+    return new Map();
+  }
+
+  const sections = new Map();
+  for (let index = 0; index < headings.length; index += 1) {
+    const current = headings[index];
+    const next = headings[index + 1];
+    const title = String(current[1] || '').trim();
+    const start = (current.index ?? 0) + current[0].length;
+    const end = next?.index ?? normalized.length;
+    sections.set(title, normalized.slice(start, end).trim());
+  }
+
+  return sections;
+}
+
+function parseMarkdownSectionList(sectionBody, fallbackText) {
+  const normalized = String(sectionBody || '').trim();
+  if (!normalized) {
+    return [fallbackText];
+  }
+
+  const bulletItems = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^-\s+/, '').trim())
+    .filter(Boolean);
+
+  return bulletItems.length > 0 ? bulletItems.slice(0, 5) : [normalized];
+}
+
+function normalizeDailySectionItems(values, fallbackText) {
+  return dedupeAndLimitItems(values, {
+    fallbackText,
+    maxItems: DETERMINISTIC_DAILY_SECTION_ITEM_LIMIT,
+    maxItemChars: DETERMINISTIC_ITEM_MAX_CHARS,
+  });
+}
+
+function normalizeDailySummarySections(summaryMarkdown) {
+  const normalized = normalizeSectionMarkdown(
+    summaryMarkdown,
+    '## Agent Activity',
+  );
+  const sections = parseMarkdownSectionMap(normalized);
+
+  return {
+    agentActivity: normalizeDailySectionItems(
+      parseMarkdownSectionList(
+        sections.get('Agent Activity'),
+        '目前沒有可整理的 agent activity。',
+      ),
+      '目前沒有可整理的 agent activity。',
+    ),
+    crossIssueThemes: normalizeDailySectionItems(
+      parseMarkdownSectionList(
+        sections.get('Cross-Issue Themes'),
+        '目前沒有可辨識的跨 issue 主題。',
+      ),
+      '目前沒有可辨識的跨 issue 主題。',
+    ),
+    decisions: normalizeDailySectionItems(
+      parseMarkdownSectionList(
+        sections.get('Decisions'),
+        '目前沒有新的跨 issue 決策。',
+      ),
+      '目前沒有新的跨 issue 決策。',
+    ),
+    openLoops: normalizeDailySectionItems(
+      parseMarkdownSectionList(
+        sections.get('Open Loops'),
+        '目前沒有待追蹤的 open loops。',
+      ),
+      '目前沒有待追蹤的 open loops。',
+    ),
+  };
+}
+
+function normalizeIssueAgentSummaryMarkdownToJson(summary) {
+  const normalized = normalizeIssueAgentSummaryMarkdown(summary);
+  const sections = parseMarkdownSectionMap(normalized);
+  const statusBody = String(sections.get('Status') || '').trim();
+
+  return {
+    status: statusBody
+      ? statusBody.replace(/^-\s+/, '').trim()
+      : ISSUE_AGENT_JSON_EMPTY_STATUS,
+    recentActivity: parseMarkdownSectionList(
+      sections.get('Recent Activity'),
+      '沒有足夠資訊可整理近期活動。',
+    ),
+    decisions: parseMarkdownSectionList(
+      sections.get('Decisions'),
+      '目前沒有明確決策。',
+    ),
+    completedWork: parseMarkdownSectionList(
+      sections.get('Completed Work'),
+      '目前沒有可確認的已完成工作。',
+    ),
+    openTasks: parseMarkdownSectionList(
+      sections.get('Open Tasks'),
+      '目前沒有可確認的待辦，或資訊不足。',
+    ),
+    preferences: parseMarkdownSectionList(
+      sections.get('Preferences'),
+      '目前沒有可確認的偏好設定。',
+    ),
+    openLoops: parseMarkdownSectionList(
+      sections.get('Open Loops'),
+      sections.get('Open Tasks') || '目前沒有可確認的未解議題。',
+    ),
+  };
+}
+
+function extractJsonBlock(summary) {
+  const normalized = String(summary || '').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  const fencedMatch = normalized.match(/```json\s*([\s\S]*?)\s*```/i);
+  if (fencedMatch) {
+    return fencedMatch[1].trim();
+  }
+
+  if (normalized.startsWith('{') && normalized.endsWith('}')) {
+    return normalized;
+  }
+
+  const firstBraceIndex = normalized.indexOf('{');
+  const lastBraceIndex = normalized.lastIndexOf('}');
+  if (firstBraceIndex >= 0 && lastBraceIndex > firstBraceIndex) {
+    return normalized.slice(firstBraceIndex, lastBraceIndex + 1).trim();
+  }
+
+  return normalized;
+}
+
+function normalizeIssueAgentSummaryJson(summary) {
+  const jsonText = extractJsonBlock(summary);
+  let parsed;
+
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (error) {
+    parsed = normalizeIssueAgentSummaryMarkdownToJson(summary);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('AI issue agent summary must be a JSON object.');
+  }
+
+  const status =
+    normalizeIssueAgentSummaryItem(parsed.status) ||
+    ISSUE_AGENT_JSON_EMPTY_STATUS;
+
+  return {
+    status: truncateText(status, DETERMINISTIC_STATUS_MAX_CHARS),
+    recentActivity: normalizeIssueAgentSummaryList(
+      parsed.recentActivity ?? parsed.recent_activity,
+      '沒有足夠資訊可整理近期活動。',
+    ),
+    decisions: normalizeIssueAgentSummaryList(
+      parsed.decisions,
+      '目前沒有明確決策。',
+    ),
+    completedWork: normalizeIssueAgentSummaryList(
+      parsed.completedWork ?? parsed.completed_work,
+      '目前沒有可確認的已完成工作。',
+    ),
+    openTasks: normalizeIssueAgentSummaryList(
+      parsed.openTasks ?? parsed.open_tasks,
+      '目前沒有可確認的待辦，或資訊不足。',
+    ),
+    preferences: normalizeIssueAgentSummaryList(
+      parsed.preferences,
+      '目前沒有可確認的偏好設定。',
+    ),
+    openLoops: normalizeIssueAgentSummaryList(
+      parsed.openLoops ??
+        parsed.open_loops ??
+        parsed.openTasks ??
+        parsed.open_tasks,
+      '目前沒有可確認的未解議題。',
+    ),
+  };
+}
+
+function buildIssueAgentSummaryJsonText(summaryJson) {
+  return JSON.stringify(summaryJson);
+}
+
 function buildIssueCommentBlocks(issueThread) {
   return issueThread.comments.map((comment, index) =>
     [
@@ -496,7 +784,9 @@ function parseArchivedIssueCommentTimestamp(rawValue) {
 }
 
 export function parseArchivedIssueComments(markdown, fallbackIssueUrl = '') {
-  const normalized = String(markdown || '').replace(/\r\n/g, '\n').trim();
+  const normalized = String(markdown || '')
+    .replace(/\r\n/g, '\n')
+    .trim();
   if (!normalized) {
     return [];
   }
@@ -527,6 +817,130 @@ export function parseArchivedIssueComments(markdown, fallbackIssueUrl = '') {
   });
 }
 
+function parseWorkspaceIssueLabels(rawValue) {
+  const normalized = String(rawValue || '').trim();
+  if (!normalized || normalized.toLowerCase() === 'none') {
+    return [];
+  }
+
+  return normalized
+    .split(',')
+    .map((label) => label.trim())
+    .filter(Boolean);
+}
+
+function parseWorkspaceIssueTitle(rawValue) {
+  const normalized = String(rawValue || '').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized.endsWith(' Description')
+    ? normalized.slice(0, -' Description'.length).trimEnd()
+    : normalized;
+}
+
+function parseIssueBodyMemoryEnabled(body) {
+  if (typeof body !== 'string') {
+    return true;
+  }
+
+  const match = body.match(/```json\s*([\s\S]*?)\s*```/i);
+  if (!match) {
+    return true;
+  }
+
+  try {
+    const parsed = JSON.parse(match[1]);
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return true;
+    }
+
+    if (typeof parsed.memoryEnabled === 'boolean') {
+      return parsed.memoryEnabled;
+    }
+
+    if (typeof parsed.memory === 'boolean') {
+      return parsed.memory;
+    }
+
+    if (
+      parsed.memory &&
+      typeof parsed.memory === 'object' &&
+      !Array.isArray(parsed.memory) &&
+      typeof parsed.memory.enabled === 'boolean'
+    ) {
+      return parsed.memory.enabled;
+    }
+
+    if (typeof parsed.loadMemory === 'boolean') {
+      return parsed.loadMemory;
+    }
+  } catch {
+    return true;
+  }
+
+  return true;
+}
+
+export function parseWorkspaceIssueSnapshot(markdown, fallbackIssueUrl = '') {
+  const normalized = String(markdown || '').replace(/\r\n/g, '\n');
+  const trimmed = normalized.trim();
+
+  if (!trimmed) {
+    return {
+      title: '',
+      state: '',
+      labels: [],
+      author: '',
+      createdAt: '',
+      body: '',
+      comments: [],
+      url: fallbackIssueUrl,
+    };
+  }
+
+  const titleMatch = trimmed.match(/^#\s+(.+?)\s*$/m);
+  const stateMatch = trimmed.match(/^\*\*State:\*\*\s*(.+?)\s*$/m);
+  const labelsMatch = trimmed.match(/^\*\*Labels:\*\*\s*(.+?)\s*$/m);
+  const authorMatch = trimmed.match(/^\*\*Created by:\*\*\s*@?(.+?)\s*$/m);
+  const createdAtMatch = trimmed.match(
+    /^\*\*Created at:\*\*\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC\s*$/m,
+  );
+  const comments = parseArchivedIssueComments(trimmed, fallbackIssueUrl);
+  const commentHeadingMatch = trimmed.match(
+    /^### Comment by @.+? at \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC\s*$/m,
+  );
+  const metadataEnd =
+    createdAtMatch?.index != null
+      ? createdAtMatch.index + createdAtMatch[0].length
+      : 0;
+  const bodyEnd = commentHeadingMatch?.index ?? trimmed.length;
+  const rawBody =
+    metadataEnd < bodyEnd ? trimmed.slice(metadataEnd, bodyEnd) : '';
+  const body = rawBody
+    .replace(/^\s+/, '')
+    .replace(/\n*\n---\s*$/, '')
+    .trim();
+
+  return {
+    title: parseWorkspaceIssueTitle(titleMatch?.[1] || ''),
+    state: String(stateMatch?.[1] || '').trim(),
+    labels: parseWorkspaceIssueLabels(labelsMatch?.[1] || ''),
+    author: String(authorMatch?.[1] || '')
+      .trim()
+      .replace(/^@/, ''),
+    createdAt: parseArchivedIssueCommentTimestamp(createdAtMatch?.[1] || ''),
+    body: normalizeWhitespace(body),
+    comments,
+    url: fallbackIssueUrl,
+  };
+}
+
 function selectDailyAgentPromptSources(agentMemories, summaryProfile) {
   const { dailySummaryMaxAgents, dailySummaryMaxAgentChars } =
     summaryProfile.execution;
@@ -537,13 +951,13 @@ function selectDailyAgentPromptSources(agentMemories, summaryProfile) {
     .slice(0, dailySummaryMaxAgents)
     .map((agentMemory) => {
       const truncatedSummary = truncatePromptBlock(
-        agentMemory.summaryMarkdown,
+        agentMemory.summaryJson,
         dailySummaryMaxAgentChars,
       );
 
       return {
         ...agentMemory,
-        promptSummaryMarkdown: truncatedSummary.text,
+        promptSummaryJson: truncatedSummary.text,
         promptSummaryTruncated: truncatedSummary.truncated,
       };
     });
@@ -555,7 +969,189 @@ function selectDailyAgentPromptSources(agentMemories, summaryProfile) {
   };
 }
 
-async function summarizeIssueAgent({
+function summarizeIssueStatus({
+  issueState,
+  openTasks,
+  openLoops,
+  completedWork,
+  recentActivity,
+}) {
+  if (issueState === 'closed') {
+    return 'Issue 已結案，主要保留關鍵決策與後續追蹤事項。';
+  }
+
+  if (openTasks.length > 0) {
+    return `Issue 仍在推進中，保留 ${openTasks.length} 個 active tasks。`;
+  }
+
+  if (openLoops.length > 0) {
+    return 'Issue 目前處於等待或待確認狀態，仍有未解的 open loops。';
+  }
+
+  if (completedWork.length > 0 && recentActivity.length === 0) {
+    return 'Issue 已完成主要工作，目前以維護與追蹤為主。';
+  }
+
+  if (recentActivity.length > 0) {
+    return 'Issue 近期仍有活動，狀態維持 active。';
+  }
+
+  return ISSUE_AGENT_JSON_EMPTY_STATUS;
+}
+
+export function buildDeterministicIssueSummary(issueThread) {
+  const recentComments = issueThread.comments.slice(
+    -DETERMINISTIC_RECENT_COMMENT_LIMIT,
+  );
+  const commentTexts = recentComments.map((comment) => comment.body || '');
+  const allTexts = [
+    issueThread.body,
+    ...issueThread.comments.map((comment) => comment.body || ''),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+  const bodyLines = extractSourceLines(issueThread.body || '', {
+    maxLines: 80,
+    stripTaskMarkers: true,
+  });
+  const recentCommentLines = extractSourceLines(commentTexts.join('\n'), {
+    maxLines: 80,
+    stripTaskMarkers: true,
+  });
+  const allLines = extractSourceLines(allTexts, {
+    maxLines: 80,
+    stripTaskMarkers: true,
+  });
+
+  const recentActivity = dedupeAndLimitItems(
+    recentComments.map((comment) => {
+      const commentLine =
+        extractSourceLines(comment.body || '', {
+          maxLines: 1,
+          stripTaskMarkers: true,
+        })[0] || '(empty)';
+      const date =
+        String(comment.createdAt || '').slice(0, 10) || 'unknown-date';
+      return `@${comment.author || 'unknown'} (${date}): ${commentLine}`;
+    }),
+    {
+      fallbackText: '最近沒有新的留言活動。',
+    },
+  );
+  const activeTaskSignals = [
+    ...extractUncheckedTaskItems(issueThread.body),
+    ...extractUncheckedTaskItems(commentTexts.join('\n')),
+    ...filterLinesByKeywords(allLines, ISSUE_SUMMARY_KEYWORDS.activeTasks),
+  ];
+  const activeTasks = dedupeAndLimitItems(activeTaskSignals, {
+    fallbackText: '目前沒有可確認的待辦，或資訊不足。',
+  });
+  const completedWork = dedupeAndLimitItems(
+    [
+      ...extractCheckedTaskItems(issueThread.body),
+      ...extractCheckedTaskItems(commentTexts.join('\n')),
+      ...filterLinesByKeywords(allLines, ISSUE_SUMMARY_KEYWORDS.completed),
+    ],
+    {
+      fallbackText: '目前沒有可確認的已完成工作。',
+    },
+  );
+  const decisions = dedupeAndLimitItems(
+    [
+      ...filterLinesByKeywords(bodyLines, ISSUE_SUMMARY_KEYWORDS.decisions),
+      ...filterLinesByKeywords(
+        recentCommentLines,
+        ISSUE_SUMMARY_KEYWORDS.decisions,
+      ),
+      ...filterLinesByKeywords(bodyLines, ISSUE_SUMMARY_KEYWORDS.preferences),
+    ],
+    {
+      fallbackText: '目前沒有明確決策。',
+    },
+  );
+  const preferences = dedupeAndLimitItems(
+    [
+      ...filterLinesByKeywords(bodyLines, ISSUE_SUMMARY_KEYWORDS.preferences),
+      ...filterLinesByKeywords(
+        recentCommentLines,
+        ISSUE_SUMMARY_KEYWORDS.preferences,
+      ),
+    ],
+    {
+      fallbackText: '目前沒有可確認的偏好設定。',
+    },
+  );
+  const openLoops = dedupeAndLimitItems(
+    [
+      ...extractQuestionLikeLines(recentCommentLines),
+      ...filterLinesByKeywords(allLines, ISSUE_SUMMARY_KEYWORDS.openLoops),
+      ...activeTaskSignals,
+    ],
+    {
+      fallbackText: '目前沒有可確認的未解議題。',
+    },
+  );
+  const status = truncateText(
+    summarizeIssueStatus({
+      issueState: issueThread.state,
+      openTasks: activeTasks,
+      openLoops,
+      completedWork,
+      recentActivity,
+    }),
+    DETERMINISTIC_STATUS_MAX_CHARS,
+  );
+
+  return {
+    status,
+    recentActivity,
+    decisions,
+    completedWork,
+    openTasks: activeTasks,
+    preferences,
+    openLoops,
+  };
+}
+
+function mergeIssueSummaries(deterministicSummary, llmSummary) {
+  const candidate = llmSummary || {};
+  const resolveList = (listCandidate, fallbackList) => {
+    const candidateValues = Array.isArray(listCandidate)
+      ? listCandidate
+      : typeof listCandidate === 'string'
+        ? [listCandidate]
+        : [];
+
+    return normalizeIssueAgentSummaryList(
+      candidateValues.length > 0 ? candidateValues : fallbackList,
+      fallbackList?.[0] || '',
+    );
+  };
+
+  return {
+    status: truncateText(
+      toSingleLine(candidate.status || deterministicSummary.status),
+      DETERMINISTIC_STATUS_MAX_CHARS,
+    ),
+    recentActivity: resolveList(
+      candidate.recentActivity,
+      deterministicSummary.recentActivity,
+    ),
+    decisions: resolveList(candidate.decisions, deterministicSummary.decisions),
+    completedWork: resolveList(
+      candidate.completedWork,
+      deterministicSummary.completedWork,
+    ),
+    openTasks: resolveList(candidate.openTasks, deterministicSummary.openTasks),
+    preferences: resolveList(
+      candidate.preferences,
+      deterministicSummary.preferences,
+    ),
+    openLoops: resolveList(candidate.openLoops, deterministicSummary.openLoops),
+  };
+}
+
+async function summarizeIssueAgentWithLlm({
   issueThread,
   summarySecrets,
   summaryProfile,
@@ -589,45 +1185,133 @@ async function summarizeIssueAgent({
   return {
     prompt,
     conversationSource,
-    summary: normalizeIssueAgentSummaryMarkdown(summary),
+    summary: normalizeIssueAgentSummaryJson(summary),
     result,
   };
 }
 
-function buildIssueMemoryFile({
-  repo,
-  issueThread,
-  generatedAt,
-  summaryMarkdown,
-}) {
-  const fileName = `issue-${issueThread.number}.md`;
-  const normalizedSummary = normalizeIssueAgentSummaryMarkdown(summaryMarkdown);
-  const issueMarkdown = [
-    '# Issue Agent Memory',
-    '',
-    `Generated at: ${formatTimestamp(generatedAt)}`,
-    '',
-    '## Metadata',
-    '',
-    `- Repository: \`${repo.fullName}\``,
-    `- Issue: [#${issueThread.number}](${issueThread.url}) ${issueThread.title}`,
-    `- State: \`${issueThread.state}\``,
-    `- Author: \`@${issueThread.author || 'unknown'}\``,
-    `- Labels: ${formatInlineList(issueThread.labels)}`,
-    `- Assignees: ${formatInlineList(issueThread.assignees)}`,
-    `- Participants: ${formatInlineList(issueThread.participants)}`,
-    `- Comment count: \`${issueThread.comments.length}\``,
-    `- Updated at: \`${issueThread.updatedAt}\``,
-    '',
-    normalizedSummary,
-    '',
-  ].join('\n');
+function buildIssueMemoryFile({ repo, issueThread, generatedAt, summaryJson }) {
+  const fileName = `issue-${issueThread.number}.json`;
+  const issueJson = {
+    generatedAt: formatTimestamp(generatedAt),
+    repository: repo.fullName,
+    issue: {
+      number: issueThread.number,
+      title: issueThread.title,
+      url: issueThread.url,
+      state: issueThread.state,
+      author: issueThread.author || 'unknown',
+      labels: issueThread.labels,
+      assignees: issueThread.assignees,
+      participants: issueThread.participants,
+      commentCount: issueThread.comments.length,
+      updatedAt: issueThread.updatedAt,
+    },
+    summary: summaryJson,
+  };
 
   return {
     fileName,
     relativePath: path.join('agents', fileName),
-    content: issueMarkdown,
+    content: JSON.stringify(issueJson, null, 2),
   };
+}
+
+export function buildDeterministicDailySummary({ agentMemories = [] }) {
+  if (agentMemories.length === 0) {
+    return [
+      '## Agent Activity',
+      '',
+      '- 本次整理視窗沒有可用 issue，先保留既有記憶。',
+      '',
+      '## Cross-Issue Themes',
+      '',
+      '- 目前沒有可辨識的跨 issue 主題。',
+      '',
+      '## Decisions',
+      '',
+      '- 目前沒有新的跨 issue 決策。',
+      '',
+      '## Open Loops',
+      '',
+      '- 等待下一輪 issue 更新後再整理。',
+    ].join('\n');
+  }
+
+  const sorted = [...agentMemories].sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt),
+  );
+  const activity = dedupeAndLimitItems(
+    sorted.map((agent) => {
+      const firstActivity =
+        agent.summaryData?.recentActivity?.[0] ||
+        agent.summaryData?.status ||
+        '近期無明確活動';
+      return `#${agent.issueNumber} ${agent.title}：${firstActivity}`;
+    }),
+    {
+      fallbackText: '本次沒有可用活動摘要。',
+      maxItems: DETERMINISTIC_DAILY_SECTION_ITEM_LIMIT,
+    },
+  );
+  const crossIssueThemes = dedupeAndLimitItems(
+    [
+      ...sorted.flatMap((agent) =>
+        (agent.summaryData?.preferences || []).map(
+          (preference) => `#${agent.issueNumber}：${preference}`,
+        ),
+      ),
+      ...sorted
+        .flatMap((agent) => agent.labels || [])
+        .filter(Boolean)
+        .map((label) => `Label theme：${label}`),
+    ],
+    {
+      fallbackText: '目前沒有穩定的跨 issue 主題。',
+      maxItems: DETERMINISTIC_DAILY_SECTION_ITEM_LIMIT,
+    },
+  );
+  const decisions = dedupeAndLimitItems(
+    sorted.flatMap((agent) =>
+      (agent.summaryData?.decisions || []).map(
+        (decision) => `#${agent.issueNumber}：${decision}`,
+      ),
+    ),
+    {
+      fallbackText: '目前沒有可確認的跨 issue 決策。',
+      maxItems: DETERMINISTIC_DAILY_SECTION_ITEM_LIMIT,
+    },
+  );
+  const openLoops = dedupeAndLimitItems(
+    sorted.flatMap((agent) => {
+      const loops = agent.summaryData?.openLoops?.length
+        ? agent.summaryData.openLoops
+        : agent.summaryData?.openTasks || [];
+      return loops.map((loop) => `#${agent.issueNumber}：${loop}`);
+    }),
+    {
+      fallbackText: '目前沒有待追蹤的 open loops。',
+      maxItems: DETERMINISTIC_DAILY_SECTION_ITEM_LIMIT,
+    },
+  );
+
+  return [
+    '## Agent Activity',
+    '',
+    ...activity.map((item) => `- ${item}`),
+    '',
+    '## Cross-Issue Themes',
+    '',
+    ...crossIssueThemes.map((item) => `- ${item}`),
+    '',
+    '## Decisions',
+    '',
+    ...decisions.map((item) => `- ${item}`),
+    '',
+    '## Open Loops',
+    '',
+    ...openLoops.map((item) => `- ${item}`),
+  ].join('\n');
 }
 
 async function summarizeDailyMemory({
@@ -639,32 +1323,20 @@ async function summarizeDailyMemory({
   agentMemories,
   summarySecrets,
   summaryProfile,
+  llmRefineEnabled = false,
+  internalWarnings = [],
   language = DEFAULT_LANGUAGE,
   summaryToolImpl = summaryTool,
 }) {
-  if (agentMemories.length === 0) {
+  const deterministicSummary = buildDeterministicDailySummary({
+    agentMemories,
+  });
+  if (!llmRefineEnabled || !summaryProfile || agentMemories.length === 0) {
     return {
       prompt: '',
-      summary: [
-        '## Agent Activity',
-        '',
-        '- No issues matched the current compaction window.',
-        '',
-        '## Cross-Issue Themes',
-        '',
-        '- No cross-issue themes were observed in this run.',
-        '',
-        '## Decisions',
-        '',
-        '- No new decisions were captured because no issues were compacted.',
-        '',
-        '## Open Loops',
-        '',
-        '- Wait for new or updated issues in the next compaction window.',
-        '',
-        '- Daily memory may stay stale if the compaction window remains empty.',
-      ].join('\n'),
+      summary: deterministicSummary,
       result: null,
+      summarySource: 'deterministic',
     };
   }
 
@@ -682,25 +1354,49 @@ async function summarizeDailyMemory({
     omittedAgentCount: dailyPromptSource.omittedAgentCount,
     language,
   });
-  const result = await summaryToolImpl.handler(
-    {
-      language,
-      text: prompt,
-      type: 'text',
-    },
-    {
-      secrets: summarySecrets,
-      summaryProfile,
-      maxCompletionTokens:
-        summaryProfile.execution.dailySummaryMaxCompletionTokens,
-    },
-  );
-  const summary = extractSummaryTextFromToolResult(result);
+
+  try {
+    const result = await summaryToolImpl.handler(
+      {
+        language,
+        text: prompt,
+        type: 'text',
+      },
+      {
+        secrets: summarySecrets,
+        summaryProfile,
+        maxCompletionTokens:
+          summaryProfile.execution.dailySummaryMaxCompletionTokens,
+      },
+    );
+    const summary = extractSummaryTextFromToolResult(result);
+
+    return {
+      prompt,
+      summary: normalizeSectionMarkdown(summary, '## Agent Activity'),
+      result,
+      summarySource: 'llm-refine',
+    };
+  } catch (error) {
+    appendInternalWarning(
+      internalWarnings,
+      createInternalWarning({
+        scope: 'daily-summary-refine',
+        error,
+        message:
+          'LLM daily refine unavailable, fallback to deterministic summary.',
+        defaultScope: 'memory',
+        transientPatterns: SUMMARY_TRANSIENT_ERROR_PATTERNS,
+      }),
+      { prefix: 'compact-memory' },
+    );
+  }
 
   return {
     prompt,
-    summary: normalizeSectionMarkdown(summary, '## Agent Activity'),
-    result,
+    summary: deterministicSummary,
+    result: null,
+    summarySource: 'deterministic',
   };
 }
 
@@ -708,7 +1404,7 @@ export function buildMemoryArtifacts({
   repo,
   issueThreads,
   agentSummaries,
-  dailySummaryMarkdown,
+  dailySummary,
   generatedAt,
   issueState,
   issueLimit,
@@ -717,55 +1413,49 @@ export function buildMemoryArtifacts({
   const stats = buildStats(issueThreads);
   const topLabels = buildLabelSummary(issueThreads);
   const dailyFileName = toIsoDate(new Date(generatedAt));
+  const normalizedDailySummary =
+    dailySummary && typeof dailySummary === 'object'
+      ? dailySummary
+      : { summary: String(dailySummary || ''), summarySource: 'deterministic' };
+  const dailySections = normalizeDailySummarySections(
+    normalizedDailySummary.summary,
+  );
   const agentFiles = agentSummaries.map((agentSummary) =>
     buildIssueMemoryFile({
       repo,
       issueThread: agentSummary.issueThread,
       generatedAt,
-      summaryMarkdown: agentSummary.summaryMarkdown,
+      summaryJson: agentSummary.summaryData,
     }),
   );
-  const dailyMarkdown = [
-    '# Daily Memory Snapshot',
-    '',
-    `Generated at: ${formatTimestamp(generatedAt)}`,
-    '',
-    '## Window',
-    '',
-    `- Repository: \`${repo.fullName}\``,
-    `- Issue state: \`${issueState}\``,
-    `- Issue limit: \`${issueLimit}\``,
-    `- Since days: \`${sinceDays}\``,
-    '',
-    '## Counts',
-    '',
-    `- Considered issues: \`${stats.consideredIssues}\``,
-    `- Open issues: \`${stats.openIssues}\``,
-    `- Closed issues: \`${stats.closedIssues}\``,
-    '',
-    '## Top Labels',
-    '',
-    ...(topLabels.length > 0
-      ? topLabels.map((label) => `- \`${label.name}\`: ${label.count}`)
-      : ['- No labels were found in the current compaction window.']),
-    '',
-    '## Agent Files',
-    '',
-    ...(agentFiles.length > 0
-      ? agentSummaries.map(
-          (agentSummary) =>
-            `- [#${agentSummary.issueNumber}](${agentSummary.issueUrl}) ${agentSummary.title} -> \`${agentSummary.relativePath}\``,
-        )
-      : ['- No issue agent files were generated in this run.']),
-    '',
-    dailySummaryMarkdown.trim(),
-    '',
-  ].join('\n');
+  const dailySnapshot = {
+    generatedAt: formatTimestamp(generatedAt),
+    window: {
+      repository: repo.fullName,
+      issueState,
+      issueLimit,
+      sinceDays,
+    },
+    counts: {
+      consideredIssues: stats.consideredIssues,
+      openIssues: stats.openIssues,
+      closedIssues: stats.closedIssues,
+    },
+    topLabels,
+    agentFiles: agentSummaries.map((agentSummary) => ({
+      issueNumber: agentSummary.issueNumber,
+      issueUrl: agentSummary.issueUrl,
+      title: agentSummary.title,
+      relativePath: agentSummary.relativePath,
+    })),
+    sections: dailySections,
+    summarySource: normalizedDailySummary.summarySource || 'deterministic',
+  };
 
   return {
     agentFiles,
     dailyFileName,
-    dailyMarkdown,
+    dailySnapshot,
   };
 }
 
@@ -805,6 +1495,22 @@ export async function writeMemoryArtifacts(outputDir, artifacts) {
   );
   await ensureFileIfMissing(path.join(dailyDir, '.gitkeep'), '');
 
+  const legacyAgentFiles = await readdir(agentsDir)
+    .then((entries) => entries.filter((entry) => /^issue-\d+\.md$/.test(entry)))
+    .catch(() => []);
+  const legacyDailyMarkdownFiles = await readdir(dailyDir)
+    .then((entries) =>
+      entries.filter((entry) => /^\d{4}-\d{2}-\d{2}\.md$/.test(entry)),
+    )
+    .catch(() => []);
+
+  await Promise.all([
+    ...legacyAgentFiles.map((entry) => unlink(path.join(agentsDir, entry))),
+    ...legacyDailyMarkdownFiles.map((entry) =>
+      unlink(path.join(dailyDir, entry)),
+    ),
+  ]);
+
   const writes = artifacts.agentFiles.map((agentFile) =>
     writeFile(
       path.join(outputDir, agentFile.relativePath),
@@ -815,8 +1521,8 @@ export async function writeMemoryArtifacts(outputDir, artifacts) {
 
   writes.push(
     writeFile(
-      path.join(dailyDir, `${artifacts.dailyFileName}.md`),
-      `${artifacts.dailyMarkdown}\n`,
+      path.join(dailyDir, `${artifacts.dailyFileName}.json`),
+      `${JSON.stringify(artifacts.dailySnapshot, null, 2)}\n`,
       'utf8',
     ),
   );
@@ -903,32 +1609,6 @@ async function fetchIssues(config, { issueState, issueLimit, sinceDays }) {
   return issues.slice(0, issueLimit);
 }
 
-async function fetchIssueComments(config, issueNumber) {
-  const comments = [];
-  let page = 1;
-
-  for (;;) {
-    const batch = await githubRequest(
-      config,
-      `/repos/${config.owner}/${config.repo}/issues/${issueNumber}/comments?per_page=100&page=${page}`,
-    );
-
-    if (!Array.isArray(batch) || batch.length === 0) {
-      break;
-    }
-
-    comments.push(...batch);
-
-    if (batch.length < 100) {
-      break;
-    }
-
-    page += 1;
-  }
-
-  return comments;
-}
-
 async function mapWithConcurrency(items, concurrency, mapper) {
   const results = new Array(items.length);
   let cursor = 0;
@@ -950,16 +1630,16 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-export function buildIssueThread(
-  repoMetadata,
-  issue,
-  comments,
-  options = {},
-) {
+export function buildIssueThread(repoMetadata, issue, comments, options = {}) {
+  const workspaceIssue = options.workspaceSnapshot?.issueThread || null;
   const archivedComments = Array.isArray(options.archivedSnapshot?.comments)
     ? options.archivedSnapshot.comments
     : [];
-  const sourceComments = comments.length > 0 ? comments : archivedComments;
+  const sourceComments = workspaceIssue
+    ? workspaceIssue.comments
+    : comments.length > 0
+      ? comments
+      : archivedComments;
   const normalizedComments = sourceComments.map((comment) => {
     if (comment && typeof comment.created_at === 'string') {
       return {
@@ -984,22 +1664,30 @@ export function buildIssueThread(
   const issueThread = {
     repoFullName: repoMetadata.fullName,
     number: issue.number,
-    title: String(issue.title || '').trim(),
-    state: String(issue.state || 'open').trim(),
+    title: String(workspaceIssue?.title || issue.title || '').trim(),
+    state: String(workspaceIssue?.state || issue.state || 'open').trim(),
     url: issue.html_url,
-    author: normalizeLogin(issue.user),
-    labels: Array.isArray(issue.labels)
-      ? issue.labels.map((label) => normalizeLabel(label)).filter(Boolean)
-      : [],
+    author: String(
+      workspaceIssue?.author || normalizeLogin(issue.user) || '',
+    ).trim(),
+    labels: workspaceIssue
+      ? workspaceIssue.labels
+      : Array.isArray(issue.labels)
+        ? issue.labels.map((label) => normalizeLabel(label)).filter(Boolean)
+        : [],
     assignees: Array.isArray(issue.assignees)
       ? issue.assignees
           .map((assignee) => normalizeLogin(assignee))
           .filter(Boolean)
       : [],
-    createdAt: formatTimestamp(issue.created_at),
+    createdAt: String(
+      workspaceIssue?.createdAt || formatTimestamp(issue.created_at) || '',
+    ).trim(),
     updatedAt: formatTimestamp(issue.updated_at),
     closedAt: issue.closed_at ? formatTimestamp(issue.closed_at) : '',
-    body: normalizeWhitespace(issue.body || ''),
+    body: workspaceIssue
+      ? normalizeWhitespace(workspaceIssue.body || '')
+      : normalizeWhitespace(issue.body || ''),
     comments: normalizedComments,
   };
 
@@ -1019,7 +1707,7 @@ async function fetchIssueWorkspaceSnapshot(config, issueNumber, issueUrl = '') {
       `/repos/${config.owner}/${config.repo}/contents/${artifactPath}?ref=${encodeURIComponent(branchName)}`,
     );
 
-    if (typeof data?.content !== 'string' || data.content.trim() === '') {
+    if (typeof data?.content !== 'string') {
       return null;
     }
 
@@ -1032,7 +1720,7 @@ async function fetchIssueWorkspaceSnapshot(config, issueNumber, issueUrl = '') {
       branchName,
       artifactPath,
       markdown,
-      comments: parseArchivedIssueComments(markdown, issueUrl),
+      issueThread: parseWorkspaceIssueSnapshot(markdown, issueUrl),
     };
   } catch (error) {
     if (isMissingGitHubContentError(error)) {
@@ -1043,22 +1731,31 @@ async function fetchIssueWorkspaceSnapshot(config, issueNumber, issueUrl = '') {
 }
 
 async function loadIssueThreads(config, repoMetadata, rawIssues) {
-  return mapWithConcurrency(
+  const issueThreads = await mapWithConcurrency(
     rawIssues,
     DEFAULT_GITHUB_CONCURRENCY,
     async (issue) => {
-      const liveComments =
-        Number.isInteger(issue.comments) && issue.comments > 0
-          ? await fetchIssueComments(config, issue.number)
-          : [];
-      const archivedSnapshot = liveComments.length === 0
-        ? await fetchIssueWorkspaceSnapshot(config, issue.number, issue.html_url)
-        : null;
-      return buildIssueThread(repoMetadata, issue, liveComments, {
-        archivedSnapshot,
+      if (!parseIssueBodyMemoryEnabled(issue.body)) {
+        return null;
+      }
+
+      const workspaceSnapshot = await fetchIssueWorkspaceSnapshot(
+        config,
+        issue.number,
+        issue.html_url,
+      );
+
+      if (!workspaceSnapshot) {
+        return null;
+      }
+
+      return buildIssueThread(repoMetadata, issue, [], {
+        workspaceSnapshot,
       });
     },
   );
+
+  return issueThreads.filter(Boolean);
 }
 
 async function summarizeIssueAgents({
@@ -1066,6 +1763,8 @@ async function summarizeIssueAgents({
   generatedAt,
   summarySecrets,
   summaryProfile,
+  llmRefineEnabled = false,
+  internalWarnings = [],
   language,
   summaryToolImpl = summaryTool,
 }) {
@@ -1075,15 +1774,44 @@ async function summarizeIssueAgents({
 
   return mapWithConcurrency(
     sortedIssueThreads,
-    summaryProfile.execution.agentSummaryConcurrency,
+    summaryProfile?.execution?.agentSummaryConcurrency || 1,
     async (issueThread) => {
-      const summary = await summarizeIssueAgent({
-        issueThread,
-        summarySecrets,
-        summaryProfile,
-        language,
-        summaryToolImpl,
-      });
+      const deterministicSummary = buildDeterministicIssueSummary(issueThread);
+      let summarySource = 'deterministic';
+      let summaryData = deterministicSummary;
+      let prompt = '';
+      let conversationSource = buildIssueConversationSource(issueThread);
+
+      if (llmRefineEnabled && summaryProfile) {
+        try {
+          const summary = await summarizeIssueAgentWithLlm({
+            issueThread,
+            summarySecrets,
+            summaryProfile,
+            language,
+            summaryToolImpl,
+          });
+          summarySource = 'llm-refine';
+          summaryData = mergeIssueSummaries(
+            deterministicSummary,
+            summary.summary,
+          );
+          prompt = summary.prompt;
+          conversationSource = summary.conversationSource;
+        } catch (error) {
+          appendInternalWarning(
+            internalWarnings,
+            createInternalWarning({
+              scope: `issue-${issueThread.number}`,
+              error,
+              message: `LLM refine unavailable for issue #${issueThread.number}; fallback to deterministic summary.`,
+              defaultScope: 'memory',
+              transientPatterns: SUMMARY_TRANSIENT_ERROR_PATTERNS,
+            }),
+            { prefix: 'compact-memory' },
+          );
+        }
+      }
 
       return {
         issueThread,
@@ -1095,11 +1823,13 @@ async function summarizeIssueAgents({
         assignees: issueThread.assignees,
         participants: issueThread.participants,
         updatedAt: issueThread.updatedAt,
-        relativePath: path.join('agents', `issue-${issueThread.number}.md`),
+        relativePath: path.join('agents', `issue-${issueThread.number}.json`),
         generatedAt: formatTimestamp(generatedAt),
-        summaryMarkdown: summary.summary,
-        prompt: summary.prompt,
-        conversationSource: summary.conversationSource,
+        summaryJson: buildIssueAgentSummaryJsonText(summaryData),
+        summaryData,
+        summarySource,
+        prompt,
+        conversationSource,
       };
     },
   );
@@ -1108,7 +1838,48 @@ async function summarizeIssueAgents({
 async function compactMemory(options, { summaryToolImpl = summaryTool } = {}) {
   const token = requireGitHubToken();
   const summarySecrets = buildSummarySecrets();
-  const summaryProfile = resolveSummaryProfile(summarySecrets);
+  const internalWarnings = [];
+  const hasProvider = Boolean(summarySecrets.provider);
+  const hasModel = Boolean(summarySecrets.model);
+  const hasApiKey = Boolean(summarySecrets.apiKey);
+  const llmRefineEnabled = hasCompleteSummarySecrets(summarySecrets);
+  let summaryProfile = null;
+
+  if (!llmRefineEnabled) {
+    if (hasProvider || hasModel || hasApiKey) {
+      const missingFields = [
+        !hasProvider ? 'provider' : '',
+        !hasModel ? 'model' : '',
+        !hasApiKey ? 'apiKey' : '',
+      ].filter(Boolean);
+      appendInternalWarning(
+        internalWarnings,
+        {
+          scope: 'llm-refine-config',
+          code: 'llm-config-incomplete',
+          message: `Skip LLM refine because required settings are incomplete: missing ${missingFields.join(', ')}.`,
+        },
+        { prefix: 'compact-memory' },
+      );
+    }
+  } else {
+    try {
+      summaryProfile = resolveSummaryProfile(summarySecrets);
+    } catch (error) {
+      appendInternalWarning(
+        internalWarnings,
+        createInternalWarning({
+          scope: 'llm-refine-profile',
+          error,
+          message:
+            'Skip LLM refine because provider profile cannot be resolved.',
+          defaultScope: 'memory',
+          transientPatterns: SUMMARY_TRANSIENT_ERROR_PATTERNS,
+        }),
+        { prefix: 'compact-memory' },
+      );
+    }
+  }
   const [owner, repo] = options.repo.split('/');
   const config = {
     owner,
@@ -1128,6 +1899,8 @@ async function compactMemory(options, { summaryToolImpl = summaryTool } = {}) {
     generatedAt,
     summarySecrets,
     summaryProfile,
+    llmRefineEnabled: Boolean(summaryProfile),
+    internalWarnings,
     language: options.language,
     summaryToolImpl,
   });
@@ -1140,6 +1913,8 @@ async function compactMemory(options, { summaryToolImpl = summaryTool } = {}) {
     agentMemories: agentSummaries,
     summarySecrets,
     summaryProfile,
+    llmRefineEnabled: Boolean(summaryProfile),
+    internalWarnings,
     language: options.language,
     summaryToolImpl,
   });
@@ -1147,7 +1922,7 @@ async function compactMemory(options, { summaryToolImpl = summaryTool } = {}) {
     repo: repoMetadata,
     issueThreads,
     agentSummaries,
-    dailySummaryMarkdown: dailySummary.summary,
+    dailySummary,
     generatedAt,
     issueState: options.issueState,
     issueLimit: options.issueLimit,
@@ -1163,6 +1938,10 @@ async function compactMemory(options, { summaryToolImpl = summaryTool } = {}) {
     consideredIssues: issueThreads.length,
     generatedAgentFiles: artifacts.agentFiles.length,
     dailyFileName: artifacts.dailyFileName,
+    summaryMode: summaryProfile
+      ? 'deterministic+optional-llm'
+      : 'deterministic-only',
+    internalWarnings,
   };
 }
 

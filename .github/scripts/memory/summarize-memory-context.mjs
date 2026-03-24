@@ -6,6 +6,16 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { parsePositiveInteger } from './cli-utils.mjs';
+import {
+  appendInternalWarning,
+  createInternalWarning,
+  dedupeAndLimitItems,
+  extractSourceLines,
+  filterLinesByKeywords,
+  hasCompleteSummarySecrets,
+  toSingleLine,
+  truncateText,
+} from './memory-utils.mjs';
 import { buildMemoryContextPrompt } from './memory-prompts.mjs';
 import {
   buildSummarySecrets,
@@ -26,6 +36,50 @@ const MANUAL_SOURCE = Object.freeze({
   label: 'Shared Manual Notes',
   relativePath: path.join('shared', 'manual.md'),
 });
+const CONTEXT_ITEM_LIMIT = 8;
+const CONTEXT_ITEM_MAX_CHARS = 200;
+const CONTEXT_LINE_SCAN_LIMIT = 120;
+const CONTEXT_KEYWORDS = Object.freeze({
+  stable: [
+    '規則',
+    'policy',
+    'source of truth',
+    '流程',
+    '慣例',
+    '習慣',
+    '長期',
+    'always',
+  ],
+  constraints: [
+    '限制',
+    'constraint',
+    '不要',
+    'must',
+    'quota',
+    'timeout',
+    'rate limit',
+  ],
+  openLoops: [
+    '待確認',
+    'pending',
+    'block',
+    '卡住',
+    '待回覆',
+    'open loop',
+    'unknown',
+  ],
+});
+const SUMMARY_TRANSIENT_ERROR_PATTERNS = [
+  /429/,
+  /rate[- ]?limit/i,
+  /quota/i,
+  /resource exhausted/i,
+  /timeout/i,
+  /timed out/i,
+  /etimedout/i,
+  /abort/i,
+  /overloaded/i,
+];
 
 function printUsage() {
   console.log(`用法:
@@ -135,7 +189,79 @@ function truncateForPrompt(content, maxChars) {
 }
 
 function isDailySnapshotFile(name) {
-  return /^\d{4}-\d{2}-\d{2}\.md$/.test(name);
+  return /^\d{4}-\d{2}-\d{2}\.json$/.test(name);
+}
+
+function normalizeDailyJsonSectionItems(value, fallbackText) {
+  const items = Array.isArray(value)
+    ? value.map((item) => toSingleLine(item)).filter(Boolean)
+    : [];
+
+  return dedupeAndLimitItems(items, {
+    fallbackText,
+    maxItems: CONTEXT_ITEM_LIMIT,
+    maxItemChars: CONTEXT_ITEM_MAX_CHARS,
+  });
+}
+
+function formatDailySnapshotForSource(dailySnapshot, dateLabel) {
+  const data =
+    dailySnapshot && typeof dailySnapshot === 'object' ? dailySnapshot : {};
+  const sections =
+    data.sections && typeof data.sections === 'object' ? data.sections : {};
+  const agentActivity = normalizeDailyJsonSectionItems(
+    sections.agentActivity,
+    '目前沒有可整理的 agent activity。',
+  );
+  const crossIssueThemes = normalizeDailyJsonSectionItems(
+    sections.crossIssueThemes,
+    '目前沒有可辨識的跨 issue 主題。',
+  );
+  const decisions = normalizeDailyJsonSectionItems(
+    sections.decisions,
+    '目前沒有新的跨 issue 決策。',
+  );
+  const openLoops = normalizeDailyJsonSectionItems(
+    sections.openLoops,
+    '目前沒有待追蹤的 open loops。',
+  );
+  const topLabels = Array.isArray(data.topLabels)
+    ? data.topLabels
+        .map((item) => {
+          const name = toSingleLine(item?.name || '');
+          const count = Number(item?.count || 0);
+          return name ? `${name} (${count})` : '';
+        })
+        .filter(Boolean)
+    : [];
+  const window = data.window || {};
+
+  return [
+    `Date: ${dateLabel}`,
+    `Generated at: ${toSingleLine(data.generatedAt || '') || 'n/a'}`,
+    `Repository: ${toSingleLine(window.repository || '') || 'n/a'}`,
+    `Issue state: ${toSingleLine(window.issueState || '') || 'n/a'}`,
+    `Issue limit: ${window.issueLimit ?? 'n/a'}`,
+    `Since days: ${window.sinceDays ?? 'n/a'}`,
+    `Summary source: ${toSingleLine(data.summarySource || '') || 'deterministic'}`,
+    '',
+    '## Agent Activity',
+    ...agentActivity.map((item) => `- ${item}`),
+    '',
+    '## Cross-Issue Themes',
+    ...crossIssueThemes.map((item) => `- ${item}`),
+    '',
+    '## Decisions',
+    ...decisions.map((item) => `- ${item}`),
+    '',
+    '## Open Loops',
+    ...openLoops.map((item) => `- ${item}`),
+    '',
+    '## Top Labels',
+    ...(topLabels.length > 0
+      ? topLabels.map((item) => `- ${item}`)
+      : ['- none']),
+  ].join('\n');
 }
 
 async function listRecentDailySnapshotNames(memoryDir, dailyFileLimit) {
@@ -192,10 +318,23 @@ export async function collectMemorySources(
       continue;
     }
 
-    const truncated = truncateForPrompt(rawContent, maxSourceChars);
+    let parsedDailySnapshot;
+    try {
+      parsedDailySnapshot = JSON.parse(rawContent);
+    } catch {
+      continue;
+    }
+
+    const dateLabel = fileName.replace(/\.json$/, '');
+    const formattedDailyContent = formatDailySnapshotForSource(
+      parsedDailySnapshot,
+      dateLabel,
+    );
+
+    const truncated = truncateForPrompt(formattedDailyContent, maxSourceChars);
     sources.push({
       key: `daily:${fileName}`,
-      label: `Daily Snapshot ${fileName.replace(/\.md$/, '')}`,
+      label: `Daily Snapshot ${dateLabel}`,
       filePath,
       relativePath,
       content: truncated.text,
@@ -221,6 +360,114 @@ function normalizeSummaryMarkdown(summary) {
   }
 
   return `# Repository Memory\n\n${normalized}`;
+}
+
+export function buildDeterministicMemoryContext({ memoryDir, sources = [] }) {
+  if (!Array.isArray(sources) || sources.length === 0) {
+    return [
+      '# Repository Memory',
+      '',
+      '## Stable Context',
+      '',
+      '- 目前尚未收集到可用 memory sources，先保留既有規則。',
+      '',
+      '## Recent Themes',
+      '',
+      `- ${memoryDir} 目前沒有可整理的 shared/daily 內容。`,
+      '',
+      '## Constraints',
+      '',
+      '- 記憶蒸餾會在有來源內容後更新。',
+      '',
+      '## Open Loops',
+      '',
+      '- 等待下一輪 compact-memory 產生新的 daily snapshot。',
+    ].join('\n');
+  }
+
+  const manualSources = sources.filter(
+    (source) => source.key === MANUAL_SOURCE.key,
+  );
+  const dailySources = sources.filter((source) =>
+    String(source.key || '').startsWith('daily:'),
+  );
+  const allLines = sources.flatMap((source) =>
+    extractSourceLines(source.content),
+  );
+  const manualLines = manualSources.flatMap((source) =>
+    extractSourceLines(source.content),
+  );
+  const dailyLines = dailySources.flatMap((source) =>
+    extractSourceLines(source.content),
+  );
+
+  const stableContext = dedupeAndLimitItems(
+    [
+      ...manualLines,
+      ...filterLinesByKeywords(allLines, CONTEXT_KEYWORDS.stable),
+    ],
+    {
+      fallbackText: '目前沒有足夠資料可提煉穩定規則。',
+      maxItems: CONTEXT_ITEM_LIMIT,
+      maxItemChars: CONTEXT_ITEM_MAX_CHARS,
+    },
+  );
+  const recentThemes = dedupeAndLimitItems(
+    [
+      ...dailySources.map((source) => {
+        const firstLine = extractSourceLines(source.content, 1)[0];
+        return firstLine ? `${source.label}：${firstLine}` : '';
+      }),
+      ...dailyLines.slice(0, CONTEXT_ITEM_LIMIT),
+    ],
+    {
+      fallbackText: '近期尚未形成可辨識的重複主題。',
+      maxItems: CONTEXT_ITEM_LIMIT,
+      maxItemChars: CONTEXT_ITEM_MAX_CHARS,
+    },
+  );
+  const constraints = dedupeAndLimitItems(
+    [
+      ...filterLinesByKeywords(manualLines, CONTEXT_KEYWORDS.constraints),
+      ...filterLinesByKeywords(allLines, CONTEXT_KEYWORDS.constraints),
+    ],
+    {
+      fallbackText: '目前沒有可確認的限制條件。',
+      maxItems: CONTEXT_ITEM_LIMIT,
+      maxItemChars: CONTEXT_ITEM_MAX_CHARS,
+    },
+  );
+  const openLoops = dedupeAndLimitItems(
+    [
+      ...filterLinesByKeywords(allLines, CONTEXT_KEYWORDS.openLoops),
+      ...allLines.filter((line) => /[?？]$/.test(line) || line.includes('？')),
+    ],
+    {
+      fallbackText: '目前沒有可確認的 open loops。',
+      maxItems: CONTEXT_ITEM_LIMIT,
+      maxItemChars: CONTEXT_ITEM_MAX_CHARS,
+    },
+  );
+
+  return [
+    '# Repository Memory',
+    '',
+    '## Stable Context',
+    '',
+    ...stableContext.map((item) => `- ${item}`),
+    '',
+    '## Recent Themes',
+    '',
+    ...recentThemes.map((item) => `- ${item}`),
+    '',
+    '## Constraints',
+    '',
+    ...constraints.map((item) => `- ${item}`),
+    '',
+    '## Open Loops',
+    '',
+    ...openLoops.map((item) => `- ${item}`),
+  ].join('\n');
 }
 
 export async function summarizeMemoryContext({
@@ -271,27 +518,92 @@ export async function generateMemoryContext({
     maxSourceChars,
     dailyFileLimit,
   });
-  if (sources.length === 0) {
-    throw new Error(`No memory markdown files found under: ${memoryDir}`);
-  }
-
   const summarySecrets = buildSummarySecrets({
     apiKey,
     provider,
     model,
   });
-  const prompt = buildMemoryContextPrompt({
+  const internalWarnings = [];
+  const deterministicSummary = buildDeterministicMemoryContext({
     memoryDir,
     sources,
-    language,
   });
-  const summary = await summarizeMemoryContext({
-    prompt,
-    language,
-    summarySecrets,
-    summaryProfile: resolveSummaryExecutionProfile(summarySecrets),
-    summaryToolImpl,
-  });
+  const prompt =
+    sources.length > 0
+      ? buildMemoryContextPrompt({
+          memoryDir,
+          sources,
+          language,
+        })
+      : '';
+  let summarySource = 'deterministic';
+  let summary = {
+    result: null,
+    summary: deterministicSummary,
+  };
+  let summaryProfile = null;
+  const hasProvider = Boolean(summarySecrets.provider);
+  const hasModel = Boolean(summarySecrets.model);
+  const hasApiKey = Boolean(summarySecrets.apiKey);
+  const llmRefineEnabled = hasCompleteSummarySecrets(summarySecrets);
+
+  if (!llmRefineEnabled) {
+    if (hasProvider || hasModel || hasApiKey) {
+      const missingFields = [
+        !hasProvider ? 'provider' : '',
+        !hasModel ? 'model' : '',
+        !hasApiKey ? 'apiKey' : '',
+      ].filter(Boolean);
+      appendInternalWarning(internalWarnings, {
+        scope: 'llm-refine-config',
+        code: 'llm-config-incomplete',
+        message: `Skip LLM refine because required settings are incomplete: missing ${missingFields.join(', ')}.`,
+      }, { prefix: 'summarize-memory-context' });
+    }
+  } else {
+    try {
+      summaryProfile = resolveSummaryExecutionProfile(summarySecrets);
+    } catch (error) {
+      appendInternalWarning(
+        internalWarnings,
+        createInternalWarning({
+          scope: 'llm-refine-profile',
+          error,
+          message:
+            'Skip LLM refine because provider profile cannot be resolved.',
+          defaultScope: 'memory-context',
+          transientPatterns: SUMMARY_TRANSIENT_ERROR_PATTERNS,
+        }),
+        { prefix: 'summarize-memory-context' },
+      );
+    }
+  }
+
+  if (summaryProfile && prompt) {
+    try {
+      summary = await summarizeMemoryContext({
+        prompt,
+        language,
+        summarySecrets,
+        summaryProfile,
+        summaryToolImpl,
+      });
+      summarySource = 'llm-refine';
+    } catch (error) {
+      appendInternalWarning(
+        internalWarnings,
+        createInternalWarning({
+          scope: 'memory-context-refine',
+          error,
+          message:
+            'LLM memory-context refine unavailable, fallback to deterministic context.',
+          defaultScope: 'memory-context',
+          transientPatterns: SUMMARY_TRANSIENT_ERROR_PATTERNS,
+        }),
+        { prefix: 'summarize-memory-context' },
+      );
+    }
+  }
 
   await writeMemoryContext(outputPath, summary.summary);
 
@@ -300,6 +612,11 @@ export async function generateMemoryContext({
     outputPath,
     prompt,
     sources,
+    summarySource,
+    summaryMode: summaryProfile
+      ? 'deterministic+optional-llm'
+      : 'deterministic-only',
+    internalWarnings,
     ...summary,
   };
 }
@@ -323,6 +640,9 @@ async function main() {
     JSON.stringify(
       {
         outputPath: result.outputPath,
+        summaryMode: result.summaryMode,
+        summarySource: result.summarySource,
+        internalWarnings: result.internalWarnings,
         sources: result.sources.map((source) => ({
           label: source.label,
           relativePath: source.relativePath,

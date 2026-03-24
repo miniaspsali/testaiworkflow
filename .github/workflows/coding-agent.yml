@@ -1,6 +1,6 @@
 # 這個 workflow 會接手指定 issue，執行 Copilot CLI，並把結果回寫到 issue comment 與 issue branch。
 # 注意：整個流程直接跑在 GitHub Actions runner 上，這份 YAML 本身沒有使用 Docker container。
-name: 處理複雜工作
+name: '處理複雜工作'
 
 # 支援兩種觸發方式：
 # 1. workflow_dispatch：從 GitHub Actions UI 手動填參數後執行
@@ -151,28 +151,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          gh_api_with_retry() {
-            local attempt=1
-            local exit_code=0
-            local max_attempts=5
-
-            while true; do
-              if gh api "$@"; then
-                return 0
-              else
-                exit_code=$?
-              fi
-
-              if (( attempt >= max_attempts )); then
-                return "${exit_code}"
-              fi
-
-              echo "::warning::gh api failed (attempt ${attempt}/${max_attempts}); retrying in 6 seconds..."
-              sleep 6
-              attempt=$((attempt + 1))
-            done
-          }
-
           # 已知 comment id 時不重建，直接把它寫進 step output 給後面使用。
           if [[ -n "${PROGRESS_COMMENT_ID}" ]]; then
             echo "comment_id=${PROGRESS_COMMENT_ID}" >> "$GITHUB_OUTPUT"
@@ -183,7 +161,7 @@ jobs:
           comment_body="$(printf '🤖 任務已承接，正在準備執行環境...\n\n- run_id: `%s`\n\n%s' \
             "${GITHUB_RUN_ID}" "${BRAIN_META}")"
 
-          response="$(gh_api_with_retry \
+          response="$(bash .github/scripts/gh-api-with-retry.sh \
             --method POST \
             -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments" \
@@ -248,42 +226,13 @@ jobs:
         run: |
           set -euo pipefail
           body_file="${RUNNER_TEMP}/comment-body.json"
+          running_body="$(printf '⚙️ 正在執行中...\n\n%s' "${BRAIN_META}")"
 
-          gh_api_with_retry() {
-            local attempt=1
-            local exit_code=0
-            local max_attempts=5
+          # 用 Node 組 JSON body，避免 shell 直接處理換行與跳脫字元。
+          node .github/scripts/build-comment-body-json.mjs \
+            --body "${running_body}" > "${body_file}"
 
-            while true; do
-              if gh api "$@"; then
-                return 0
-              else
-                exit_code=$?
-              fi
-
-              if (( attempt >= max_attempts )); then
-                return "${exit_code}"
-              fi
-
-              echo "::warning::gh api failed (attempt ${attempt}/${max_attempts}); retrying in 6 seconds..."
-              sleep 6
-              attempt=$((attempt + 1))
-            done
-          }
-
-          # 用 Python 組 JSON body，避免 shell 直接處理換行與跳脫字元太麻煩。
-          python3 - <<'PY' > "${body_file}"
-          import json
-          import os
-
-          body = (
-              "⚙️ 正在執行中..."
-              f"\n\n{os.environ['BRAIN_META']}"
-          )
-          print(json.dumps({"body": body}))
-          PY
-
-          gh_api_with_retry \
+          bash .github/scripts/gh-api-with-retry.sh \
             --method PATCH \
             -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
@@ -316,6 +265,10 @@ jobs:
           # 確保結果檔所在目錄已存在。
           mkdir -p "$(dirname "${RESULT_FILE}")"
 
+          # 每次執行前先清空輸出檔，避免沿用上一次 run 的內容。
+          : > "${RESULT_FILE}"
+          : > "${LOG_FILE}"
+
           # 若 issue workspace 內有使用者自行安裝的 skills，先複製到 repo-root .agents/skills/。
           # 這是純粹的 runner 本機操作，不會 git add/commit，因此不會進入 issue branch。
           if [[ -d "${ISSUE_DIR}/.agents/skills" ]]; then
@@ -334,128 +287,7 @@ jobs:
               echo "::notice::Loading environment variables from ${ISSUE_DIR}/.env for Copilot CLI"
               while IFS= read -r -d '' _env_key && IFS= read -r -d '' _env_value; do
                 export "${_env_key}=${_env_value}"
-              done < <(python3 - <<'PY'
-          import re
-          import sys
-          from pathlib import Path
-
-          path = Path(".env")
-          valid_key = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-          def strip_inline_comment(raw_value: str) -> str:
-              in_single = False
-              in_double = False
-              escaped = False
-
-              for index, char in enumerate(raw_value):
-                  if escaped:
-                      escaped = False
-                      continue
-
-                  if char == "\\" and in_double:
-                      escaped = True
-                      continue
-
-                  if char == "'" and not in_double:
-                      in_single = not in_single
-                      continue
-
-                  if char == '"' and not in_single:
-                      in_double = not in_double
-                      continue
-
-                  if char == "#" and not in_single and not in_double:
-                      if index == 0 or raw_value[index - 1].isspace():
-                          return raw_value[:index].rstrip()
-
-              return raw_value.rstrip()
-
-          def parse_value(raw_value: str) -> str:
-              value = strip_inline_comment(raw_value).strip()
-              if not value:
-                  return ""
-
-              if value[0] == "'":
-                  closing_index = value.find("'", 1)
-                  if closing_index == -1:
-                      raise ValueError("Unterminated single-quoted value")
-                  trailing = value[closing_index + 1:].strip()
-                  if trailing and not trailing.startswith("#"):
-                      raise ValueError("Unexpected characters after single-quoted value")
-                  return value[1:closing_index]
-
-              if value[0] == '"':
-                  parsed = []
-                  escaped = False
-
-                  for index, char in enumerate(value[1:], start=1):
-                      if escaped:
-                          parsed.append({
-                              "n": "\n",
-                              "r": "\r",
-                              "t": "\t",
-                              '"': '"',
-                              "\\": "\\",
-                              "$": "$",
-                          }.get(char, "\\" + char))
-                          escaped = False
-                          continue
-
-                      if char == "\\":
-                          escaped = True
-                          continue
-
-                      if char == '"':
-                          trailing = value[index + 1:].strip()
-                          if trailing and not trailing.startswith("#"):
-                              raise ValueError("Unexpected characters after double-quoted value")
-                          return "".join(parsed)
-
-                      parsed.append(char)
-
-                  raise ValueError("Unterminated double-quoted value")
-
-              return value
-
-          for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-              line = raw_line.strip()
-              if not line or line.startswith("#"):
-                  continue
-
-              if line.startswith("export "):
-                  line = line[7:].lstrip()
-
-              if "=" not in line:
-                  print(
-                      f"::warning file=.env,line={line_number}::Skipping invalid dotenv line without '='",
-                      file=sys.stderr,
-                  )
-                  continue
-
-              key, raw_value = line.split("=", 1)
-              key = key.strip()
-              if not valid_key.match(key):
-                  print(
-                      f"::warning file=.env,line={line_number}::Skipping invalid environment variable name '{key}'",
-                      file=sys.stderr,
-                  )
-                  continue
-
-              try:
-                  value = parse_value(raw_value)
-              except ValueError as exc:
-                  print(
-                      f"::warning file=.env,line={line_number}::{exc}; skipping line",
-                      file=sys.stderr,
-                  )
-                  continue
-
-              sys.stdout.write(key)
-              sys.stdout.write("\0")
-              sys.stdout.write(value)
-              sys.stdout.write("\0")
-          PY
-              )
+              done < <(node .github/scripts/parse-dotenv-null.mjs .env)
               unset _env_key _env_value
             fi
             prompt="$(cat issue.md)"
@@ -466,14 +298,6 @@ jobs:
           )
           status=${PIPESTATUS[0]}
           set -e
-
-          # 從 copilot JSON 日誌裡抽出最終可回貼內容。
-          # 優先順序：session.error -> final_answer -> 最後一筆有內容的 assistant.message。
-          if [[ -f "${LOG_FILE}" ]]; then
-            node .github/scripts/extract-copilot-result.mjs "${LOG_FILE}" > "${RESULT_FILE}"
-          else
-            : > "${RESULT_FILE}"
-          fi
 
           # 若輸出看起來是認證失敗，就補上一段排錯說明，方便使用者自行檢查 token。
           if grep -Eq 'No authentication information found|Authentication failed' "${RESULT_FILE}" 2>/dev/null; then
@@ -522,18 +346,57 @@ jobs:
             exit 0
           fi
 
-          # 遠端 branch 已存在時用 force-with-lease 更新；否則建立新的上游分支。
+          # 先在本地建立 artifact commit，後續再把它重演到遠端 issue branch 的最新頂端。
           git commit -m "chore: record coding agent output for issue #${ISSUE_NUMBER}"
+
+          # 記下剛才提交的 agent output commit hash，供後續 cherry-pick 使用。
+          AGENT_COMMIT=$(git rev-parse HEAD)
+          AGENT_COMMIT_MESSAGE=$(git log -1 --format=%s "${AGENT_COMMIT}")
 
           push_succeeded=false
           for attempt in 1 2 3; do
+            # 若前一次嘗試留下未完成的 cherry-pick 狀態，先清乾淨再重試。
+            if git rev-parse -q --verify CHERRY_PICK_HEAD >/dev/null; then
+              echo "::warning::Found unfinished cherry-pick state from previous attempt; aborting it before retry."
+              git cherry-pick --abort || true
+            fi
+
             git fetch origin "${BRANCH_NAME}" || true
-            git rebase "origin/${BRANCH_NAME}" || { git rebase --abort || true; }
 
             if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH_NAME}"; then
-              if git push --force-with-lease origin "HEAD:${BRANCH_NAME}"; then
-                push_succeeded=true
-                break
+              # 重設到遠端分支頂端，再 cherry-pick 本次 agent commit。
+              # 此做法確保只新增一個 commit，不會把 rebase origin/main 帶進的
+              # 重複 commit（不同 SHA 但相同內容）一併推上遠端，避免大量重複 commits。
+              git reset --hard "origin/${BRANCH_NAME}"
+
+              if git cherry-pick --no-commit "${AGENT_COMMIT}"; then
+                # no-commit 模式下若沒有 staged 變更，代表遠端已包含等效內容，視為 no-op。
+                if git diff --cached --quiet; then
+                  echo "No-op cherry-pick: remote branch already contains equivalent artifact content."
+                  push_succeeded=true
+                  break
+                fi
+
+                git commit -m "${AGENT_COMMIT_MESSAGE}"
+                if git push origin "HEAD:${BRANCH_NAME}"; then
+                  push_succeeded=true
+                  break
+                fi
+              else
+                # 有衝突時不改寫遠端歷史，直接 abort 並重試。
+                if git ls-files -u | grep -q .; then
+                  echo "::warning::Cherry-pick conflict detected; aborting and retrying without rewriting remote history."
+                  git cherry-pick --abort || true
+                # 若是空 cherry-pick（等效內容已存在），同樣視為成功 no-op。
+                elif git diff --cached --quiet && git diff --quiet; then
+                  echo "No-op cherry-pick after replay attempt: equivalent artifact already exists on remote branch."
+                  git cherry-pick --abort || true
+                  push_succeeded=true
+                  break
+                else
+                  echo "::warning::Cherry-pick failed in unexpected state; aborting and retrying."
+                  git cherry-pick --abort || true
+                fi
               fi
             else
               if git push --set-upstream origin "HEAD:${BRANCH_NAME}"; then
@@ -579,39 +442,11 @@ jobs:
           sleep 5
           body_file="${RUNNER_TEMP}/comment-body-final.json"
 
-          gh_api_with_retry() {
-            local attempt=1
-            local exit_code=0
-            local max_attempts=5
-
-            while true; do
-              if gh api "$@"; then
-                return 0
-              else
-                exit_code=$?
-              fi
-
-              if (( attempt >= max_attempts )); then
-                return "${exit_code}"
-              fi
-
-              echo "::warning::gh api failed (attempt ${attempt}/${max_attempts}); retrying in 6 seconds..."
-              sleep 6
-              attempt=$((attempt + 1))
-            done
-          }
-
           # 讀取 result.txt 並包成 GitHub API 需要的 JSON body。
-          python3 - <<'PY' > "${body_file}"
-          import json
-          import os
-          from pathlib import Path
+          node .github/scripts/build-comment-body-json.mjs \
+            --from-file "${RESULT_FILE}" > "${body_file}"
 
-          body = Path(os.environ["RESULT_FILE"]).read_text(encoding="utf-8")
-          print(json.dumps({"body": body}))
-          PY
-
-          gh_api_with_retry \
+          bash .github/scripts/gh-api-with-retry.sh \
             --method PATCH \
             -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
@@ -628,28 +463,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          gh_api_with_retry() {
-            local attempt=1
-            local exit_code=0
-            local max_attempts=5
-
-            while true; do
-              if gh api "$@"; then
-                return 0
-              else
-                exit_code=$?
-              fi
-
-              if (( attempt >= max_attempts )); then
-                return "${exit_code}"
-              fi
-
-              echo "::warning::gh api failed (attempt ${attempt}/${max_attempts}); retrying in 6 seconds..."
-              sleep 6
-              attempt=$((attempt + 1))
-            done
-          }
-
           # 若已有結果檔就直接拿來回貼；否則組一段 fallback 失敗摘要。
           if [[ -f "${RESULT_FILE}" && -s "${RESULT_FILE}" ]]; then
             summary="$(cat "${RESULT_FILE}")"
@@ -659,15 +472,11 @@ jobs:
           fi
 
           body_file="${RUNNER_TEMP}/comment-body-failure.json"
-          # 用 Python 組 JSON，避免多行字串在 shell 中跳脫失敗。
-          SUMMARY="${summary}" python3 - <<'PY' > "${body_file}"
-          import json
-          import os
+          # 用 Node 組 JSON，避免多行字串在 shell 中跳脫失敗。
+          SUMMARY="${summary}" node .github/scripts/build-comment-body-json.mjs \
+            --from-env SUMMARY > "${body_file}"
 
-          print(json.dumps({"body": os.environ["SUMMARY"]}))
-          PY
-
-          gh_api_with_retry \
+          bash .github/scripts/gh-api-with-retry.sh \
             --method PATCH \
             -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" \
