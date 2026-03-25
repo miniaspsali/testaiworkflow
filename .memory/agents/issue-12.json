@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-24T20:37:53.506Z",
+  "generatedAt": "2026-03-25T20:35:14.265Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 12,
@@ -18,7 +18,7 @@
     "updatedAt": "2026-03-20T03:57:37.000Z"
   },
   "summary": {
-    "status": "{   \"status\": \"阻塞 - Issue 仍為 open，但因 Claude Sonnet 4.6 API 配額不足 (402 錯誤) 暫時無法繼續測試。\",   \"recentActivity\": [     \"龍蝦協助主人以 JSON 格式記錄 3/19 晚餐 500 元的支出。\",     \"嘗試呼叫 Claude Sonnet 4.6 進…",
+    "status": "{   \"status\": \"阻塞 - Issue 仍為 open，但因 Claude Sonnet 4.6 API 配額不足 (402 錯誤) 暫時無法繼續測試。\",   \"recentActivity\": [     \"龍蝦協助主人在 Telegram 中記錄 3/19 晚餐 500 元的支出。\",     \"龍蝦嘗試呼叫 Claude Sonnet…",
     "recentActivity": [
       "沒有足夠資訊可整理近期活動。"
     ],

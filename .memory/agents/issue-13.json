@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-24T20:37:53.506Z",
+  "generatedAt": "2026-03-25T20:35:14.265Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 13,
@@ -18,7 +18,7 @@
     "updatedAt": "2026-03-20T05:52:53.000Z"
   },
   "summary": {
-    "status": "{   \"status\": \"阻塞 - 目前服務配額已用盡，無法即時完成記帳回覆，需等待配額恢復或切換模型\",   \"recentActivity\": [     \"收到使用者於 3/19 晚餐 1000 元的記帳資訊\",     \"將該筆支出暫存於本次對話的記帳清單中\",     \"回覆使用者已收到並記錄該筆支出\",     \"偵測到 Claude So…",
+    "status": "{   \"status\": \"阻塞 - Issue 仍為 open，但因 Claude Sonnet 4.6 配額耗盡，無法即時處理後續記帳指令\",   \"recentActivity\": [     \"收到使用者於 3/19 晚餐 1000 元的記帳資訊\",     \"將該筆支出暫存於本次會話的記帳清單中\",     \"回覆使用者已記錄此筆支出（假設回覆…",
     "recentActivity": [
       "沒有足夠資訊可整理近期活動。"
     ],

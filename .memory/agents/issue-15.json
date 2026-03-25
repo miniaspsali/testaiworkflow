@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-24T20:37:53.506Z",
+  "generatedAt": "2026-03-25T20:35:14.265Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 15,
@@ -16,24 +16,24 @@
     "updatedAt": "2026-03-21T01:58:59.000Z"
   },
   "summary": {
-    "status": "資訊不明 - Issue 為 open 但缺乏內容與指示，無法判斷進度",
+    "status": "資訊不明 - 目前缺乏需求說明與工作細節，無法判斷是否活躍或阻塞。",
     "recentActivity": [
-      "目前尚未收到任何對話或指示，龍蝦保持待命狀態"
+      "沒有足夠資訊可整理近期活動。"
     ],
     "decisions": [
-      "尚未確定任何決策，需待主人說明需求"
+      "目前尚未有明確決策，需等待作者提供需求細節。"
     ],
     "completedWork": [
       "目前沒有可確認的已完成工作。"
     ],
     "openTasks": [
-      "等待主人提供具體需求或說明"
+      "請向 @miniaspsali 索取 Issue 內容與預期目標。"
     ],
     "preferences": [
       "目前沒有可確認的偏好設定。"
     ],
     "openLoops": [
-      "等待主人提供具體需求或說明"
+      "請向 @miniaspsali 索取 Issue 內容與預期目標。"
     ]
   }
 }
