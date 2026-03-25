@@ -107,7 +107,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           # 抓完整歷史，這樣後面的 fetch / rebase / push 比較不會受限。
-          fetch-depth: 0
+          fetch-depth: 1
           token: "${{ secrets.GH_ISSUES_TOKEN || github.token }}"
 
       # 先把 Node.js 環境準備好，方便 CLI 或 Node-based tooling 使用。
@@ -115,6 +115,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      # 在 Linux runner 裝上繁體中文字型，避免產圖、截圖或報表時出現中文方塊字。
+      - name: Install Traditional Chinese fonts
+        uses: doggy8088/install-noto-sans-tc-fonts-action@v1
 
       # 確認 runner 具備執行 workflow 需要的工具；如果沒有 copilot CLI 就現場安裝。
       # 這裡是直接在 runner 上安裝工具，不是 Docker build / docker run。

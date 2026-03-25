@@ -177,12 +177,20 @@ jobs:
           CLAWBRAIN_MODEL="$(echo "$VARS" | jq -r '.CLAWBRAIN_MODEL // ""')"
           SCHEDULE_TIME_UNDERSTANDING_MODEL="$(echo "$VARS" | jq -r '.SCHEDULE_TIME_UNDERSTANDING_MODEL // ""')"
           PROFILE_NAME="$(echo "$VARS" | jq -r '.PROFILE_NAME // ""')"
+          PERSONALITY="$(echo "$VARS" | jq -r '.PERSONALITY // ""')"
           if [[ -z "$PROFILE_NAME" ]]; then
             PROFILE_NAME="$REPO_NAME"
           fi
 
+          if [[ -n "$PERSONALITY" ]]; then
+            echo "🦞 延用既有 personality 設定"
+          else
+            echo "ℹ️ 未設定 personality，BootstrapWorker 會套用預設 personality"
+          fi
+
           jq -n \
             --arg profileName "$PROFILE_NAME" \
+            --arg personality "$PERSONALITY" \
             --arg githubOwner "$REPO_OWNER" \
             --arg repoName "$REPO_NAME" \
             --arg githubToken "$GH_ISSUES_TOKEN" \
@@ -203,7 +211,7 @@ jobs:
               {
                 profile: {
                   name: $profileName,
-                  personality: ""
+                  personality: $personality
                 },
                 github: {
                   id: $githubOwner,

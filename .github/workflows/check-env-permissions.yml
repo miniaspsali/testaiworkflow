@@ -513,6 +513,29 @@ jobs:
             exit 1
           fi
 
+      - name: "[TC-GM03] GEMINI_API_KEY — Google Generative AI API 驗證（listModels）"
+        id: tc_gm03
+        continue-on-error: true
+        run: |
+          if [[ -z "${GEMINI_API_KEY:-}" ]]; then
+            echo "ℹ️ GEMINI_API_KEY 未設定，跳過 API 驗證"
+            exit 0
+          fi
+          RESPONSE=$(curl -sS \
+            "https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}&pageSize=1")
+          if echo "$RESPONSE" | jq -e '.models' > /dev/null 2>&1; then
+            MODEL_COUNT=$(echo "$RESPONSE" | jq '.models | length')
+            echo "✅ GEMINI_API_KEY 有效（可存取 Generative AI API，models 數量: ${MODEL_COUNT}）"
+          elif echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+            CODE=$(echo "$RESPONSE" | jq -r '.error.code // "unknown"')
+            MSG=$(echo "$RESPONSE" | jq -r '.error.message // "unknown"')
+            echo "::error::GEMINI_API_KEY 驗證失敗（code: ${CODE}）: ${MSG}"
+            exit 1
+          else
+            echo "::error::GEMINI_API_KEY 驗證回傳非預期格式: $(echo "$RESPONSE" | head -c 200)"
+            exit 1
+          fi
+
       # ══════════════════════════════════════════════════════════════════════
       # CLAWBRAIN_API_KEY（選填）
       # ══════════════════════════════════════════════════════════════════════
@@ -542,6 +565,85 @@ jobs:
           fi
           echo "✅ CLAWBRAIN_API_KEY 非空白（長度: ${#CLAWBRAIN_API_KEY} 字元）"
 
+      - name: "[TC-CB03] CLAWBRAIN_API_KEY — 依 CLAWBRAIN_PROVIDER 呼叫對應 AI Provider API 驗證"
+        id: tc_cb03
+        continue-on-error: true
+        run: |
+          if [[ -z "${CLAWBRAIN_API_KEY:-}" ]]; then
+            echo "ℹ️ CLAWBRAIN_API_KEY 未設定，跳過 API 驗證"
+            exit 0
+          fi
+          PROVIDER="${CLAWBRAIN_PROVIDER:-}"
+          case "${PROVIDER}" in
+            gemini)
+              RESPONSE=$(curl -sS \
+                "https://generativelanguage.googleapis.com/v1beta/models?key=${CLAWBRAIN_API_KEY}&pageSize=1")
+              if echo "$RESPONSE" | jq -e '.models' > /dev/null 2>&1; then
+                echo "✅ CLAWBRAIN_API_KEY 有效（provider: gemini，可存取 Generative AI API）"
+              else
+                MSG=$(echo "$RESPONSE" | jq -r '.error.message // empty' 2>/dev/null)
+                echo "::error::CLAWBRAIN_API_KEY 驗證失敗（provider: gemini）: ${MSG}"
+                exit 1
+              fi
+              ;;
+            openai)
+              HTTP_STATUS=$(curl -sS -o /tmp/cb-api-response.json -w "%{http_code}" \
+                -H "Authorization: Bearer ${CLAWBRAIN_API_KEY}" \
+                "https://api.openai.com/v1/models?limit=1")
+              if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]]; then
+                echo "✅ CLAWBRAIN_API_KEY 有效（provider: openai，HTTP ${HTTP_STATUS}）"
+              else
+                MSG=$(cat /tmp/cb-api-response.json | jq -r '.error.message // empty' 2>/dev/null)
+                echo "::error::CLAWBRAIN_API_KEY 驗證失敗（provider: openai，HTTP ${HTTP_STATUS}）: ${MSG}"
+                exit 1
+              fi
+              ;;
+            anthropic)
+              HTTP_STATUS=$(curl -sS -o /tmp/cb-api-response.json -w "%{http_code}" \
+                -H "x-api-key: ${CLAWBRAIN_API_KEY}" \
+                -H "anthropic-version: 2023-06-01" \
+                "https://api.anthropic.com/v1/models?limit=1")
+              if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]]; then
+                echo "✅ CLAWBRAIN_API_KEY 有效（provider: anthropic，HTTP ${HTTP_STATUS}）"
+              else
+                MSG=$(cat /tmp/cb-api-response.json | jq -r '.error.message // empty' 2>/dev/null)
+                echo "::error::CLAWBRAIN_API_KEY 驗證失敗（provider: anthropic，HTTP ${HTTP_STATUS}）: ${MSG}"
+                exit 1
+              fi
+              ;;
+            groq)
+              HTTP_STATUS=$(curl -sS -o /tmp/cb-api-response.json -w "%{http_code}" \
+                -H "Authorization: Bearer ${CLAWBRAIN_API_KEY}" \
+                "https://api.groq.com/openai/v1/models")
+              if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]]; then
+                echo "✅ CLAWBRAIN_API_KEY 有效（provider: groq，HTTP ${HTTP_STATUS}）"
+              else
+                MSG=$(cat /tmp/cb-api-response.json | jq -r '.error.message // empty' 2>/dev/null)
+                echo "::error::CLAWBRAIN_API_KEY 驗證失敗（provider: groq，HTTP ${HTTP_STATUS}）: ${MSG}"
+                exit 1
+              fi
+              ;;
+            mistral)
+              HTTP_STATUS=$(curl -sS -o /tmp/cb-api-response.json -w "%{http_code}" \
+                -H "Authorization: Bearer ${CLAWBRAIN_API_KEY}" \
+                "https://api.mistral.ai/v1/models")
+              if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]]; then
+                echo "✅ CLAWBRAIN_API_KEY 有效（provider: mistral，HTTP ${HTTP_STATUS}）"
+              else
+                MSG=$(cat /tmp/cb-api-response.json | jq -r '.error.message // empty' 2>/dev/null)
+                echo "::error::CLAWBRAIN_API_KEY 驗證失敗（provider: mistral，HTTP ${HTTP_STATUS}）: ${MSG}"
+                exit 1
+              fi
+              ;;
+            *)
+              if [[ -z "$PROVIDER" ]]; then
+                echo "⚠️ CLAWBRAIN_PROVIDER 未設定，無法確認對應 API；僅確認 CLAWBRAIN_API_KEY 非空白"
+              else
+                echo "⚠️ CLAWBRAIN_PROVIDER '${PROVIDER}' 未支援 API 驗證，跳過（僅確認 CLAWBRAIN_API_KEY 非空白）"
+              fi
+              ;;
+          esac
+
       # ══════════════════════════════════════════════════════════════════════
       # FELO_API_KEY（選填）
       # ══════════════════════════════════════════════════════════════════════
@@ -570,6 +672,34 @@ jobs:
             exit 1
           fi
           echo "✅ FELO_API_KEY 非空白（長度: ${#FELO_API_KEY} 字元）"
+
+      - name: "[TC-FL03] FELO_API_KEY — Felo API 驗證（POST /v2/chat）"
+        id: tc_fl03
+        continue-on-error: true
+        run: |
+          if [[ -z "${FELO_API_KEY:-}" ]]; then
+            echo "ℹ️ FELO_API_KEY 未設定，跳過 API 驗證"
+            exit 0
+          fi
+          HTTP_STATUS=$(curl -sS -o /tmp/felo-response.json -w "%{http_code}" \
+            --connect-timeout 15 --max-time 30 \
+            -X POST \
+            -H "Authorization: Bearer ${FELO_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"query":"test"}' \
+            "https://openapi.felo.ai/v2/chat")
+          STATUS_FIELD=$(cat /tmp/felo-response.json | jq -r '.status // empty' 2>/dev/null)
+          if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]] && \
+             { [[ "$STATUS_FIELD" == "ok" ]] || [[ "$STATUS_FIELD" == "200" ]]; }; then
+            echo "✅ FELO_API_KEY 有效（Felo API 回應正常，HTTP ${HTTP_STATUS}）"
+          elif [[ "$HTTP_STATUS" == "401" || "$HTTP_STATUS" == "403" ]]; then
+            MSG=$(cat /tmp/felo-response.json | jq -r '.message // .error // empty' 2>/dev/null)
+            echo "::error::FELO_API_KEY 無效或已過期（HTTP ${HTTP_STATUS}）: ${MSG}"
+            exit 1
+          else
+            MSG=$(cat /tmp/felo-response.json | jq -r '.message // .error // empty' 2>/dev/null)
+            echo "::warning::FELO_API_KEY API 回應非預期（HTTP ${HTTP_STATUS}）: ${MSG}"
+          fi
 
       # ══════════════════════════════════════════════════════════════════════
       # WORKER_NAME（Repository Variable，必填）
@@ -816,12 +946,15 @@ jobs:
           # Gemini API Key (optional)
           OUTCOME_GM01: ${{ steps.tc_gm01.outcome }}
           OUTCOME_GM02: ${{ steps.tc_gm02.outcome }}
+          OUTCOME_GM03: ${{ steps.tc_gm03.outcome }}
           # ClawBrain API Key (optional)
           OUTCOME_CB01: ${{ steps.tc_cb01.outcome }}
           OUTCOME_CB02: ${{ steps.tc_cb02.outcome }}
+          OUTCOME_CB03: ${{ steps.tc_cb03.outcome }}
           # Felo API Key (optional)
           OUTCOME_FL01: ${{ steps.tc_fl01.outcome }}
           OUTCOME_FL02: ${{ steps.tc_fl02.outcome }}
+          OUTCOME_FL03: ${{ steps.tc_fl03.outcome }}
           # WORKER_NAME variable
           OUTCOME_WN01: ${{ steps.tc_wn01.outcome }}
           OUTCOME_WN02: ${{ steps.tc_wn02.outcome }}
@@ -869,9 +1002,9 @@ jobs:
             "$OUTCOME_TG01" "$OUTCOME_TG02" "$OUTCOME_TG03" \
             "$OUTCOME_TW01" "$OUTCOME_TW02" "$OUTCOME_TW03" \
             "$OUTCOME_CS01" "$OUTCOME_CS02" "$OUTCOME_CS03" \
-            "$OUTCOME_GM01" "$OUTCOME_GM02" \
-            "$OUTCOME_CB01" "$OUTCOME_CB02" \
-            "$OUTCOME_FL01" "$OUTCOME_FL02" \
+            "$OUTCOME_GM01" "$OUTCOME_GM02" "$OUTCOME_GM03" \
+            "$OUTCOME_CB01" "$OUTCOME_CB02" "$OUTCOME_CB03" \
+            "$OUTCOME_FL01" "$OUTCOME_FL02" "$OUTCOME_FL03" \
             "$OUTCOME_WN01" "$OUTCOME_WN02" "$OUTCOME_WN03" \
             "$OUTCOME_SUB01" "$OUTCOME_SUB02" \
             "$OUTCOME_WU01" "$OUTCOME_WU02" "$OUTCOME_WU03" \
@@ -929,10 +1062,13 @@ jobs:
             echo "| TC-CS03 | \`GH_CODESPACE_TOKEN\`  | GitHub API 驗證（若存在）      | $(icon "$OUTCOME_CS03") |"
             echo "| TC-GM01 | \`GEMINI_API_KEY\`      | 是否存在（選填）               | $(icon "$OUTCOME_GM01") |"
             echo "| TC-GM02 | \`GEMINI_API_KEY\`      | 格式驗證（若存在）             | $(icon "$OUTCOME_GM02") |"
+            echo "| TC-GM03 | \`GEMINI_API_KEY\`      | Google AI API 驗證（若存在）  | $(icon "$OUTCOME_GM03") |"
             echo "| TC-CB01 | \`CLAWBRAIN_API_KEY\`   | 是否存在（選填）               | $(icon "$OUTCOME_CB01") |"
             echo "| TC-CB02 | \`CLAWBRAIN_API_KEY\`   | 非空白驗證（若存在）           | $(icon "$OUTCOME_CB02") |"
+            echo "| TC-CB03 | \`CLAWBRAIN_API_KEY\`   | Provider API 驗證（若存在）   | $(icon "$OUTCOME_CB03") |"
             echo "| TC-FL01 | \`FELO_API_KEY\`        | 是否存在（選填）               | $(icon "$OUTCOME_FL01") |"
             echo "| TC-FL02 | \`FELO_API_KEY\`        | 非空白驗證（若存在）           | $(icon "$OUTCOME_FL02") |"
+            echo "| TC-FL03 | \`FELO_API_KEY\`        | Felo API 驗證（若存在）       | $(icon "$OUTCOME_FL03") |"
             echo ""
 
             echo "#### Repository Variables"
