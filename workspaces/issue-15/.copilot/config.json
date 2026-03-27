@@ -1,6 +1,6 @@
 {
   "experimental": true,
-  "model": "gpt-5-mini",
+  "model": "gpt-5.4-mini",
   "reasoning_effort": "xhigh",
   "auto_update": false,
   "trusted_folders": [
