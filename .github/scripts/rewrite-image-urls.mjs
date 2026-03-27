@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
+import { posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const IMAGE_EXTENSIONS = /\.(?:jpe?g|png|gif|webp|svg)$/i;
@@ -12,8 +14,55 @@ function isAbsoluteUrl(path) {
   return /^(?:https?:\/\/|data:)/i.test(path);
 }
 
-function buildBlobUrl(rawPath, repo, branch) {
-  const cleanPath = rawPath.replace(/^\.\//, '');
+function normalizeRepoPath(rawPath) {
+  const normalized = String(rawPath || '')
+    .trim()
+    .replaceAll('\\', '/');
+  if (!normalized) {
+    return '';
+  }
+
+  return posix.normalize(normalized)
+    .replace(/^\.\//, '')
+    .replace(/^\/+/, '')
+    .replace(/^\.$/, '');
+}
+
+function resolveRepoImagePath(rawPath, options = {}) {
+  const cleanPath = normalizeRepoPath(rawPath);
+  if (!cleanPath) {
+    return cleanPath;
+  }
+
+  const basePath = normalizeRepoPath(options.basePath);
+  if (!basePath) {
+    return cleanPath;
+  }
+
+  if (cleanPath === basePath || cleanPath.startsWith(`${basePath}/`)) {
+    return cleanPath;
+  }
+
+  const pathExists =
+    typeof options.pathExists === 'function' ? options.pathExists : null;
+  if (pathExists && pathExists(cleanPath)) {
+    return cleanPath;
+  }
+
+  const baseRelativePath = normalizeRepoPath(posix.join(basePath, cleanPath));
+  if (!pathExists) {
+    return cleanPath;
+  }
+
+  if (pathExists(baseRelativePath)) {
+    return baseRelativePath;
+  }
+
+  return cleanPath;
+}
+
+function buildBlobUrl(repoPath, repo, branch) {
+  const cleanPath = normalizeRepoPath(repoPath);
   const encodedBranch = encodeURIComponent(branch);
   const encodedPath = cleanPath
     .split('/')
@@ -26,7 +75,7 @@ function fileName(p) {
   return p.split('/').pop();
 }
 
-export function rewriteImageUrls(text, repo, branch) {
+export function rewriteImageUrls(text, repo, branch, options = {}) {
   if (!text || !repo || !branch) {
     return text;
   }
@@ -39,7 +88,8 @@ export function rewriteImageUrls(text, repo, branch) {
     if (isAbsoluteUrl(rawPath) || !IMAGE_EXTENSIONS.test(rawPath)) {
       placeholders.push(match);
     } else {
-      placeholders.push(`![${alt}](${buildBlobUrl(rawPath, repo, branch)})`);
+      const repoPath = resolveRepoImagePath(rawPath, options);
+      placeholders.push(`![${alt}](${buildBlobUrl(repoPath, repo, branch)})`);
     }
     return `\x00MDIMG${idx}\x00`;
   });
@@ -47,7 +97,8 @@ export function rewriteImageUrls(text, repo, branch) {
   // Pass 2: Rewrite bare image paths in remaining text (now safe from collision
   // with Pass 1 URLs). Convert to markdown images so they render on GitHub.
   result = result.replace(BARE_IMAGE_PATH_RE, (_match, rawPath) => {
-    return `![${fileName(rawPath)}](${buildBlobUrl(rawPath, repo, branch)})`;
+    const repoPath = resolveRepoImagePath(rawPath, options);
+    return `![${fileName(repoPath)}](${buildBlobUrl(repoPath, repo, branch)})`;
   });
 
   // Restore placeholders
@@ -68,7 +119,11 @@ async function main() {
   }
 
   const text = await readFile(resultFile, 'utf8');
-  const rewritten = rewriteImageUrls(text, repo, branch);
+  const basePath = normalizeRepoPath(posix.dirname(resultFile));
+  const rewritten = rewriteImageUrls(text, repo, branch, {
+    basePath,
+    pathExists: (repoPath) => existsSync(repoPath),
+  });
 
   if (rewritten !== text) {
     await writeFile(resultFile, rewritten, 'utf8');

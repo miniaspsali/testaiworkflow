@@ -235,6 +235,9 @@ jobs:
                 scheduleTimeUnderstanding: {
                   model: $scheduleTimeUnderstandingModel
                 },
+                bootstrapOptions: {
+                  skipWelcomeIssueEnsure: true
+                },
                 clawBrain: (
                   if $clawBrainProvider == "" and $clawBrainModel == "" and $clawBrainApiKey == "" then
                     null
