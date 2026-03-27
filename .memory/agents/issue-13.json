@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-26T20:32:54.825Z",
+  "generatedAt": "2026-03-27T20:34:56.329Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 13,
@@ -18,9 +18,9 @@
     "updatedAt": "2026-03-20T05:52:53.000Z"
   },
   "summary": {
-    "status": "{\"status\":\"阻塞 - 目前因 API 配額不足無法完成自動記帳，issue 仍為 open。\",\"recentActivity\":[\"收到主人 3/19 晚餐 1000",
+    "status": "Issue 仍在推進中，保留 1 個 active tasks。",
     "recentActivity": [
-      "沒有足夠資訊可整理近期活動。"
+      "最近沒有新的留言活動。"
     ],
     "decisions": [
       "目前沒有明確決策。"
