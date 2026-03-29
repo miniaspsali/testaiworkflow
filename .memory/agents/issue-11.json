@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-28T20:26:41.274Z",
+  "generatedAt": "2026-03-29T20:28:00.712Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 11,
@@ -18,7 +18,7 @@
     "updatedAt": "2026-03-20T03:47:09.000Z"
   },
   "summary": {
-    "status": "{   \"status\": \"阻塞 - 目前因 API 配額不足，無法產出 UI 原型，需等待或改用其他工具\",   \"recentActivity\": [     \"嘗試生成 UI 原型時收到配額不足的錯誤回應\",     \"已確認主人需求：首頁大圖、菜單網格、聯絡表單，風格參考 Google Stitch\"   ],   \"decisions\": […",
+    "status": "{   \"status\": \"阻塞 - 目前缺乏生成 UI 所需的配額，導致無法完成設計與 HTML 輸出\",   \"recentActivity\": [     \"收到主人要求產出台灣美食網站 UI 原型與 HTML，已嘗試呼叫生成模型\",     \"因配額不足返回錯誤訊息，未能產出任何設計稿\"   ],   \"decisions\": [     \"先等…",
     "recentActivity": [
       "沒有足夠資訊可整理近期活動。"
     ],

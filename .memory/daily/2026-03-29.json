@@ -1,0 +1,107 @@
+{
+  "generatedAt": "2026-03-29T20:28:00.712Z",
+  "window": {
+    "repository": "miniaspsali/testaiworkflow",
+    "issueState": "all",
+    "issueLimit": 100,
+    "sinceDays": 30
+  },
+  "counts": {
+    "consideredIssues": 9,
+    "openIssues": 9,
+    "closedIssues": 0
+  },
+  "topLabels": [
+    {
+      "name": "chat-session",
+      "count": 7
+    }
+  ],
+  "agentFiles": [
+    {
+      "issueNumber": 15,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/15",
+      "title": "Issue #15",
+      "relativePath": "agents/issue-15.json"
+    },
+    {
+      "issueNumber": 14,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/14",
+      "title": "新聞記者",
+      "relativePath": "agents/issue-14.json"
+    },
+    {
+      "issueNumber": 13,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/13",
+      "title": "記帳小龍蝦 Claude Sonnet 4.6 Test2",
+      "relativePath": "agents/issue-13.json"
+    },
+    {
+      "issueNumber": 12,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/12",
+      "title": "test Claude Sonnet 4.6 model",
+      "relativePath": "agents/issue-12.json"
+    },
+    {
+      "issueNumber": 11,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/11",
+      "title": "UI 小龍蝦",
+      "relativePath": "agents/issue-11.json"
+    },
+    {
+      "issueNumber": 3,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/3",
+      "title": "Issue #3",
+      "relativePath": "agents/issue-3.json"
+    },
+    {
+      "issueNumber": 10,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/10",
+      "title": "記帳小龍蝦 GPT-5 mini",
+      "relativePath": "agents/issue-10.json"
+    },
+    {
+      "issueNumber": 4,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/4",
+      "title": "記帳小龍蝦",
+      "relativePath": "agents/issue-4.json"
+    },
+    {
+      "issueNumber": 6,
+      "issueUrl": "https://github.com/miniaspsali/testaiworkflow/issues/6",
+      "title": "網頁設計",
+      "relativePath": "agents/issue-6.json"
+    }
+  ],
+  "sections": {
+    "agentActivity": [
+      "#15 Issue #15：目前尚未有對話紀錄可供整理",
+      "#14 新聞記者：收到主人要求整理今日熱點新聞的指示",
+      "#13 記帳小龍蝦 Claude Sonnet 4.6 Test2：沒有足夠資訊可整理近期活動。",
+      "#12 test Claude Sonnet 4.6 model：最近沒有新的留言活動。",
+      "#11 UI 小龍蝦：沒有足夠資訊可整理近期活動。"
+    ],
+    "crossIssueThemes": [
+      "#15：目前沒有可確認的偏好設定。",
+      "#14：目前沒有可確認的偏好設定。",
+      "#13：目前沒有可確認的偏好設定。",
+      "#12：目前沒有可確認的偏好設定。",
+      "#11：目前沒有可確認的偏好設定。"
+    ],
+    "decisions": [
+      "#15：尚未確定任何決策，需等待主人提供需求說明",
+      "#14：尚未決定替代資料來源或申請額外配額",
+      "#13：目前沒有明確決策。",
+      "#12：目前沒有明確決策。",
+      "#11：目前沒有明確決策。"
+    ],
+    "openLoops": [
+      "#15：等待主人說明 Issue 目標與需求",
+      "#15：需要取得 Telegram 對話內容以便進一步整理",
+      "#14：取得可用的新聞 API 配額或改用其他公開新聞來源",
+      "#14：重新執行新聞抓取並整理成今日重點摘要",
+      "#14：將整理好的新聞摘要回覆給主人"
+    ]
+  },
+  "summarySource": "deterministic"
+}
