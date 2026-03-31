@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-30T20:41:38.020Z",
+  "generatedAt": "2026-03-31T20:39:41.608Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 12,
@@ -18,7 +18,7 @@
     "updatedAt": "2026-03-20T03:57:37.000Z"
   },
   "summary": {
-    "status": "{   \"status\": \"阻塞 - 目前 Claude Sonnet 4.6 模型配額不足，無法繼續測試\",   \"recentActivity\": [     \"記錄",
+    "status": "{   \"status\": \"活躍 - 仍在進行中，但因 Claude Sonnet 4.6 配額不足暫時阻塞\",",
     "recentActivity": [
       "沒有足夠資訊可整理近期活動。"
     ],

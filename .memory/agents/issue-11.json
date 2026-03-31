@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-30T20:41:38.020Z",
+  "generatedAt": "2026-03-31T20:39:41.608Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 11,
@@ -18,33 +18,26 @@
     "updatedAt": "2026-03-20T03:47:09.000Z"
   },
   "summary": {
-    "status": "阻塞 - 目前缺乏生成 UI 所需的配額，導致無法完成產出",
+    "status": "Issue 仍在推進中，保留 2 個 active tasks。",
     "recentActivity": [
-      "嘗試根據需求產生 UI 原型時，收到配額不足的錯誤回應",
-      "已將錯誤訊息記錄於 Issue 內供後續追蹤"
+      "最近沒有新的留言活動。"
     ],
     "decisions": [
-      "先暫停生成，待取得足夠配額或改用其他生成服務後再繼續"
+      "目前沒有明確決策。"
     ],
     "completedWork": [
-      "無"
+      "目前沒有可確認的已完成工作。"
     ],
     "openTasks": [
-      "取得或升級生成服務的配額",
-      "依需求設計首頁大圖與標語",
-      "製作菜單頁的網格佈局，展示台灣經典小吃",
-      "完成聯絡我們頁面的表單與資訊區塊",
-      "產出符合 Google Stitch 風格的 HTML 與 CSS"
+      "請幫我生成一個台灣美食網站的 UI 原型與設計圖 + HTML。",
+      "3.聯絡我們 (Contact)：包含簡單的表單與聯絡資訊。 請參考 Google Stitch 風格 進行輸出"
     ],
     "preferences": [
       "目前沒有可確認的偏好設定。"
     ],
     "openLoops": [
-      "取得或升級生成服務的配額",
-      "依需求設計首頁大圖與標語",
-      "製作菜單頁的網格佈局，展示台灣經典小吃",
-      "完成聯絡我們頁面的表單與資訊區塊",
-      "產出符合 Google Stitch 風格的 HTML 與 CSS"
+      "請幫我生成一個台灣美食網站的 UI 原型與設計圖 + HTML。",
+      "3.聯絡我們 (Contact)：包含簡單的表單與聯絡資訊。 請參考 Google Stitch 風格 進行輸出"
     ]
   }
 }
