@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-31T20:39:41.608Z",
+  "generatedAt": "2026-04-01T20:40:21.695Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 13,
@@ -18,7 +18,7 @@
     "updatedAt": "2026-03-20T05:52:53.000Z"
   },
   "summary": {
-    "status": "{   \"status\": \"阻塞 - 目前因 Claude Sonnet 4.6 API 配額耗盡，無法完成後續記帳處理\",   \"recentActivity\": [     \"解析 Issue 內容，確認本龍蝦的角色是記帳助理\",     \"從使用者訊息中擷取 3/19 晚餐 1000 元的支出\",     \"將該筆支出暫存於本次會話的記帳清單\"…",
+    "status": "{   \"status\": \"活躍 - Issue 仍為 open，已收到第一筆支出但 API 配額錯誤阻礙後續自動記錄\",   \"recentActivity\": [     \"已將 3/19 晚餐 1000 元記錄於臨時帳本\",     \"收到配額錯誤訊息，",
     "recentActivity": [
       "沒有足夠資訊可整理近期活動。"
     ],
