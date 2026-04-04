@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-03T20:32:48.562Z",
+  "generatedAt": "2026-04-04T20:26:39.806Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 15,
@@ -16,27 +16,28 @@
     "updatedAt": "2026-03-21T01:58:59.000Z"
   },
   "summary": {
-    "status": "資訊不明，因為 Issue 內容僅有標題且缺乏任何指示或討論",
+    "status": "資訊不明——目前僅有標題與建立時間，缺乏內容與討論，無法判斷是否阻塞或已完成",
     "recentActivity": [
-      "目前尚未收到任何來自 Telegram 的對話或回覆",
-      "未有任何工作進度可記錄"
+      "目前尚未有 Telegram 對話或回覆紀錄可供整理"
     ],
     "decisions": [
-      "尚未確定任何決策，需等待主人提供具體需求"
+      "尚未形成任何決策，需等待主人提供具體需求或說明"
     ],
     "completedWork": [
       "無已完成項目"
     ],
     "openTasks": [
       "等待主人說明 Issue 目標與需求",
-      "需要取得相關的 Telegram 討論內容以便進一步整理"
+      "待收集相關 Telegram 討論以釐清工作範圍",
+      "需要指派負責人或協作者"
     ],
     "preferences": [
       "目前沒有可確認的偏好設定。"
     ],
     "openLoops": [
       "等待主人說明 Issue 目標與需求",
-      "需要取得相關的 Telegram 討論內容以便進一步整理"
+      "待收集相關 Telegram 討論以釐清工作範圍",
+      "需要指派負責人或協作者"
     ]
   }
 }
