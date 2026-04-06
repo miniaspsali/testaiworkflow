@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-05T20:29:32.548Z",
+  "generatedAt": "2026-04-06T20:35:01.538Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 15,
@@ -16,27 +16,24 @@
     "updatedAt": "2026-03-21T01:58:59.000Z"
   },
   "summary": {
-    "status": "活躍 - Issue 為 open，尚未有阻塞或完成訊號",
+    "status": "活躍 - Issue 仍為 open，尚未有進一步資訊或阻塞",
     "recentActivity": [
-      "目前尚未收到 Telegram 相關對話或回覆",
-      "龍蝦已將此 Issue 記錄為待處理項目"
+      "目前尚未有任何對話或更新記錄"
     ],
     "decisions": [
-      "尚未形成具體決策，需待主人提供需求說明"
+      "尚未形成決策，需待主人提供具體需求或說明"
     ],
     "completedWork": [
-      "目前沒有可確認的已完成工作。"
+      "無已完成項目"
     ],
     "openTasks": [
-      "等待主人說明 Issue 目標與需求",
-      "若有相關 Telegram 訊息，請提供以便進一步整理"
+      "等待主人說明 Issue 目標與需求"
     ],
     "preferences": [
       "目前沒有可確認的偏好設定。"
     ],
     "openLoops": [
-      "等待主人說明 Issue 目標與需求",
-      "若有相關 Telegram 訊息，請提供以便進一步整理"
+      "等待主人說明 Issue 目標與需求"
     ]
   }
 }

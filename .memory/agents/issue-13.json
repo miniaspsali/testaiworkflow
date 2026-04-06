@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-05T20:29:32.548Z",
+  "generatedAt": "2026-04-06T20:35:01.538Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 13,
@@ -18,7 +18,7 @@
     "updatedAt": "2026-03-20T05:52:53.000Z"
   },
   "summary": {
-    "status": "{   \"status\": \"活躍 (受配額限制阻塞) - 目前已收到使用者的支出資訊，但因 Claude Sonnet 4.6 配額不足，無法即時完成自動記帳。\",   \"recentActivity\": [     \"收到使用者於 3/19 晚餐 1000 元的支出訊息。\",     \"嘗試呼叫 Claude Sonnet 4.6 進行記帳，但回傳 4…",
+    "status": "{   \"status\": \"活躍 - 仍在收集日常收支資料，最近收到一筆晚餐支出，尚未完成完整記帳流程。\",   \"recentActivity\": [     \"已將",
     "recentActivity": [
       "沒有足夠資訊可整理近期活動。"
     ],
