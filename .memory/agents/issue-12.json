@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-06T20:35:01.538Z",
+  "generatedAt": "2026-04-07T20:42:30.471Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 12,
@@ -18,9 +18,9 @@
     "updatedAt": "2026-03-20T03:57:37.000Z"
   },
   "summary": {
-    "status": "Issue 仍在推進中，保留 1 個 active tasks。",
+    "status": "{   \"status\": \"阻塞 - 目前缺少 Claude Sonnet 4.6 的配額，無法執行測試\",   \"recentActivity\": [     \"龍蝦已將 3/19 晚餐 500 元的支出記錄於測試資料中\",     \"嘗試呼叫 Claude Sonnet 4.6 進行模型測試時收到配額不足的 402 錯誤\",     \"在 Issue…",
     "recentActivity": [
-      "最近沒有新的留言活動。"
+      "沒有足夠資訊可整理近期活動。"
     ],
     "decisions": [
       "目前沒有明確決策。"
