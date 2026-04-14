@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-13T20:50:59.836Z",
+  "generatedAt": "2026-04-14T20:50:10.239Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 13,
@@ -18,7 +18,7 @@
     "updatedAt": "2026-03-20T05:52:53.000Z"
   },
   "summary": {
-    "status": "{   \"status\": \"阻塞 - 目前因 Claude Sonnet 配額耗盡，無法即時處理後續記帳指令\",   \"recentActivity\": [     \"已將使用者於 3/19 晚餐 1000 元的支出記錄於本龍蝦的日常收支帳本\",     \"建立了代理人基本資訊 (名稱、說明) 的 JSON 設定\",     \"偵測到配額錯誤訊息，提醒需…",
+    "status": "{   \"status\": \"活躍 - Issue 仍為 open，已開始記錄支出，但仍待後續收支輸入與配額問題解決\",   \"recentActivity\": [     \"已將 3/19 晚餐 1000 元記錄於帳本\",     \"收到配額不足的回應，提醒需檢查 API 配額\"   ],   \"decisions\": [     \"決定使用記帳小",
     "recentActivity": [
       "沒有足夠資訊可整理近期活動。"
     ],
