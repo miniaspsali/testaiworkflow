@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-14T20:50:10.239Z",
+  "generatedAt": "2026-04-15T20:43:07.602Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 13,
@@ -18,7 +18,7 @@
     "updatedAt": "2026-03-20T05:52:53.000Z"
   },
   "summary": {
-    "status": "{   \"status\": \"活躍 - Issue 仍為 open，已開始記錄支出，但仍待後續收支輸入與配額問題解決\",   \"recentActivity\": [     \"已將 3/19 晚餐 1000 元記錄於帳本\",     \"收到配額不足的回應，提醒需檢查 API 配額\"   ],   \"decisions\": [     \"決定使用記帳小",
+    "status": "{   \"status\": \"阻塞 - 目前開放但因 API 配額不足無法繼續自動記帳，需先恢復配額才能進一步處理\",   \"recentActivity\": [     \"收到使用者於 3/19 晚餐 1000 元的記帳資訊\",     \"嘗試使用 Claude Sonnet 4.6 進行記錄時遭遇 402 配額錯誤\"   ],   \"decisions…",
     "recentActivity": [
       "沒有足夠資訊可整理近期活動。"
     ],

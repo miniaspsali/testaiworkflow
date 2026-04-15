@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-14T20:50:10.239Z",
+  "generatedAt": "2026-04-15T20:43:07.602Z",
   "repository": "miniaspsali/testaiworkflow",
   "issue": {
     "number": 15,
@@ -16,26 +16,24 @@
     "updatedAt": "2026-03-21T01:58:59.000Z"
   },
   "summary": {
-    "status": "資訊不明 - Issue 為 open 但缺乏描述與討論，無法判斷進度或阻礙因素",
+    "status": "活躍 - Issue 仍為 open，尚未有任何討論或任務指派，需等待主人提供需求。",
     "recentActivity": [
-      "目前尚未有任何 Telegram 對話或回覆與此 Issue 相關"
+      "目前尚未有任何對話或回覆紀錄。"
     ],
     "decisions": [
-      "尚未確定任何決策，需等待主人提供需求說明"
+      "尚未確定任何決策，需等待主人說明具體目標。"
     ],
     "completedWork": [
-      "無已完成項目"
+      "目前沒有可確認的已完成工作。"
     ],
     "openTasks": [
-      "等待主人補充 Issue 內容與具體需求",
-      "確認此 Issue 的目標與預期交付成果"
+      "等待主人提供需求說明或任務細節。"
     ],
     "preferences": [
       "目前沒有可確認的偏好設定。"
     ],
     "openLoops": [
-      "等待主人補充 Issue 內容與具體需求",
-      "確認此 Issue 的目標與預期交付成果"
+      "等待主人提供需求說明或任務細節。"
     ]
   }
 }
